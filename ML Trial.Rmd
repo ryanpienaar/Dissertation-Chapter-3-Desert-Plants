@@ -1,0 +1,53 @@
+---
+title: "ML trials"
+author: "R Pienaar"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r Packages}
+
+library(tidyverse)
+library(ggplot2)
+
+```
+
+
+
+```{r Load data}
+
+moj.df <-read.csv("Lytle_Veg_Density_13_to_23.csv")
+rush.df <- read.csv("Rush_Veg_Density_13_to_23.csv")
+
+```
+
+Exploratory Data Analysis
+```{r EDA}
+
+#### Mojave ####
+
+moj.df <- moj.df |> select(DATE, BLOCK, PLOT, BURNED, RODENTS, TRANSECT, SPECIES, MEAN, Density)
+head(moj.df)
+summary(moj.df$PLOT)
+moj.df$MEAN <- as.numeric(moj.df$MEAN)
+moj.df$Density <- as.numeric(moj.df$Density)
+moj.df$PLOT <- as.factor(moj.df$PLOT)
+
+moj.df[moj.df$PLOT=="UN ",]
+
+ggplot(data = moj.df, aes(PLOT, Density))+
+  stat_summary(fun = "sum", geom = "bar")
+
+#### Great Basin ####
+
+rush.df <- rush.df |> select(DATE, Block, Plot,Burned, Rodents, Transect, Plant.Species, mean, Density)
+head(rush.df)
+
+```
+
+Cleaning the dataframes
+What is my response variable that I am going to measure? Biodiversity indices, Individual Plant species
+What are my explanatory variables? Climatic variables, Year, Block, Plot
+How does the dataframe need to be formatted?
+  Each response needs a unique row of year, block, plot
+  We will need unique dataframes for each response
