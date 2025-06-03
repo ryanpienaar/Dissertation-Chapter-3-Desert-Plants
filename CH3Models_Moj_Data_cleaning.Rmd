@@ -1,0 +1,452 @@
+---
+title: "Desert Plant Models Mojave Data Cleaning"
+author: "R Pienaar"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Libraries
+
+```{r}
+
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(vegan)
+library(lubridate)
+
+```
+
+
+The goal of this project is to understand how fire, climate, and rodents affect native and introduced plants in the Great Basin and Mojave Deserts. I will use data collected from 2013 to 2025 from the study plots that includes rodent species occurence and plant density transects. Climate data will be extracted using PRISM. There is no variation between the experimental blocks in terms of climatic differences but we are looking at differences between the 2 deserts.
+
+
+I will start by loading all of the Mojave Files
+
+First the plant data
+
+```{r}
+
+mojplants <- read.csv("Input files/Lytle_Veg_Density.csv")
+
+```
+    
+      I need to format the plant data correctly
+      
+```{r}
+
+head(mojplants)
+
+# Get rid of the individual quadrats
+mojplants <- mojplants |> select(DATE, BLOCK, PLOT, BURNED, RODENTS, TRANSECT, SPECIES, Density..m2.)
+
+# First thing I wanna do is rename the species column cos calling it plant.species was dumb
+colnames(mojplants)
+colnames(mojplants) = c("DATE", "Block", "Plot", "Burned", "Rodents", "Transect", "Species", "Density")
+
+### How many unique species do we have
+unique(mojplants$Species) ### This is messy we have 184 species here
+mojplants$Species = as.factor(mojplants$Species)
+summary(mojplants$Species)
+
+#Reset factor levels
+mojplants$Species <- as.character(mojplants$Species)
+mojplants$Species <- as.factor(mojplants$Species)
+
+# Remove individual plants only found once
+mojplants <- mojplants %>%
+  group_by(Species) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+# Remove unknown species
+mojplants <- mojplants |> filter(!grepl("UK|Unknown", Species, ignore.case = TRUE))
+
+# ? We'll just remove
+mojplants = subset(mojplants, !(Species %in% c("DARK MUSTARD", "PI\xd1ATA", "COTTON BALL", "FAKE CRESTED WHEATGRASS",  "PREGNANT POPPY",  
+                                               "VELCRO VINE", "BORAGE 2", "ER", "VRT", "?")))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("ALAL SHRUB") ~ "ALAL",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("SMALL WHITE ASTER","LITTLE WHITE ASTER", "LITTLE WHITE DAISY", "LITTLE WHITE DAISY (ASTER)","AMLA") ~ "ANLA",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("ANSU") ~ "ASNU",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("ANSU", "VETCH") ~ "ASNU",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("BLADDERPOD", "LETE3") ~ "LETE",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("Cholla") ~ "CYAC",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("DEPU") ~ "DEPI",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("ERER") ~ "IPPO",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("GULA4") ~ "GULA",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("LASE3") ~ "LASE",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("LETE3") ~ "LETE",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("DesLily", "Lily", "LILY") ~ "GULA",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("OENEGRACEAE") ~ "OEPR",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("PHFR2") ~ "PHFR",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("PLANTAGO", "WOOLY PLANTAIN") ~ "PLPA",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("THAMNOSMA") ~ "THMO",
+    TRUE ~ Species
+  ))
+
+# THESE are the same thing
+mojplants <- mojplants %>%
+  mutate(Species = case_when(
+    Species %in% c("WHITE BORAGE") ~ "CRPT",
+    TRUE ~ Species
+  ))
+
+# Get rid of the stupid wrong factor
+mojplants <- mojplants %>%
+  mutate(Plot = case_when(
+    Plot %in% c("UN ") ~ "UN",
+    TRUE ~ Plot
+  ))
+
+
+
+# We arent interested in the 0's right now
+
+#mojplants <- mojplants %>%
+#  filter(Density != 0)
+
+mojplants$Plot <- as.factor(mojplants$Plot)
+mojplants$Burned <- as.factor(mojplants$Burned)
+mojplants$Rodents <- as.factor(mojplants$Rodents)
+mojplants$Density <- as.numeric(mojplants$Density)
+mojplants$Density <- mojplants$Density %>% replace(is.na(.), 0)
+
+
+```
+  
+Now I think I want to restructure the dataframe so that there is a column for every species
+
+```{r}
+
+head(mojplants)
+mojplants$Species <- as.factor(mojplants$Species)
+mojplants$Block <- as.factor(mojplants$Block)
+
+# Group by the specified columns and count occurrences
+unique_test <- mojplants %>%
+  group_by(DATE, Block, Plot, Species, Transect) %>%
+  summarise(count = n(), .groups = 'drop')
+
+# Filter the results to find any combinations that occur more than once
+duplicates <- unique_test %>%
+  filter(count > 1)
+
+
+mojplants <- mojplants %>%
+  group_by(DATE, Block, Plot, Transect, Species) %>%
+  summarise(Density = mean(Density), .groups = 'drop')
+
+# Reshape the data using pivot_wider
+mojplants <- mojplants %>%
+  pivot_wider(names_from = Species, values_from = Density, values_fill = 0)
+
+summary(mojplants)
+
+### At this point I have all my plant data in the format that I want it
+
+# Now I am going to calculate richness and diversity
+
+mojplants$rich <- rowSums(mojplants[,5:62]> 0 )
+mojplants$simp_div <- diversity(mojplants[,5:62], index = "invsimpson")
+
+mojplants$simp_div[mojplants$simp_div==Inf] <- 1
+
+
+mojplants$shan_div <- diversity(mojplants[,5:62], index = "shannon")
+
+summary(mojplants)
+
+
+```
+
+I am going to reformat this so that I have one row for each plot each year
+
+```{r}
+
+mojdata <- mojplants %>%
+  group_by(DATE, Block, Plot) %>%
+  summarise(across(ALAL:shan_div, mean, na.rm = TRUE), .groups = 'drop')
+
+summary(mojdata)
+# Create a complete dataset
+mojdata <- mojdata %>%
+  complete(DATE = full_seq(DATE, 1),
+           Block = factor(c("1", "2", "3", "4", "5")),
+           Plot = factor(c('BN', 'UN', 'BS', 'US')))
+
+sum(is.na(mojdata$Plot))
+
+mojdata <- mojdata |>  mutate_all(~replace(., is.na(.), 0))
+
+summary(mojdata)
+
+```
+    Next up I want to get the rodent data
+  
+```{r}
+
+mojrodents <- read.csv("C:/Users/ryanp/Documents/Academia/Dissertation/Chapter2_Rodents/Rodent_analysis/Lytle_Rodents_CH2_Output.csv")
+
+head(mojrodents)
+
+mojrodents$Plot <- as.factor(paste0(mojrodents$Fire, mojrodents$Rodents))
+
+mojrodents = mojrodents|> select(Date, BLOCK, Fire, Rodents, abundance, richness, simp_div, shan_div)
+# Extract the year from the Date column and populate the Year column
+mojrodents <- mojrodents |> 
+  mutate(Year = year(ymd(Date)))
+
+
+mojrodents <- mojrodents|>
+  group_by(Year, BLOCK, Fire, Rodents) %>%
+  summarise(Rodent.Abundance = mean(abundance), 
+            Rodent.Richness = mean(richness), 
+            Rodent.Simp = mean(simp_div), 
+            Rodent.Shan = mean(shan_div),
+            .groups = 'drop')
+
+mojrodents$Plot <- as.factor(paste0(mojrodents$Fire, mojrodents$Rodents))
+mojrodents$BLOCK <- as.factor(mojrodents$BLOCK)
+
+
+colnames(mojrodents)
+colnames(mojrodents) = c("DATE", "Block", "Fire", "Rodents", "Rodent.Abundance", "Rodent.Richness", "Rodent.Simp", "Rodent.Shan", "Plot")
+
+head(mojrodents)
+
+head(mojdata)
+
+str(mojdata)
+str(mojrodents)
+ merge(mojdata, mojrodents, by = c("DATE", "Block", "Plot"))
+test = merge(mojdata, mojrodents[,c("DATE", "Block", "Plot", "Rodent.Abundance", "Rodent.Richness", "Rodent.Simp", "Rodent.Shan")], 
+                   by = c("DATE", "Block", "Plot"), all.x = TRUE)
+
+test <- test |> select(DATE, Block, Plot, Rodent.Abundance)
+
+mojdata = merge(mojdata, mojrodents[,c("DATE", "Block", "Plot", "Rodent.Abundance", "Rodent.Richness", "Rodent.Simp", "Rodent.Shan")], 
+                   by = c("DATE", "Block", "Plot"), all.x = TRUE)
+
+mojdata <- mojdata %>% replace(is.na(.), 0)
+
+head(mojdata)
+
+```
+
+    Now I need to load the climate data and figure out what I want to calculate from that. I have monthly data but I think I need to put it into seasons, so that the plant density is dependent on the previos summer/winter precipitation. That means I have to break it down in to seasons and years. the data collection were all in April so I think that  should end my year in April.
+    
+```{r}
+
+# Prevent scientific notation
+options(scipen = 999)
+
+mojclim <- read.csv("Input files/PRISM_data_Lytle.csv")
+head(mojclim)
+
+# Convert Date column to Date format
+mojclim$Date <- as.Date(paste0(mojclim$Date, "-01"), format = "%Y-%m-%d")
+
+# Extract Year and Month
+mojclim$Year <- format(mojclim$Date, "%Y")
+mojclim$Month <- format(mojclim$Date, "%m")
+
+# Adjust the Year for water year
+mojclim$WaterYear <- as.numeric(mojclim$Year)
+mojclim$WaterYear[mojclim$Month %in% c("01", "02", "03")] <- mojclim$WaterYear[mojclim$Month %in% c("01", "02", "03")] - 1
+
+# Calculate total annual precipitation from April to March
+total_annual_precip <- aggregate(mojclim$ppt..mm., by = list(Year = mojclim$WaterYear), sum)
+mean_annual_temp <- aggregate(mojclim$tmean..degrees.C., by = list(Year = mojclim$WaterYear), mean)
+
+# Calculate seasonal precipitation
+mojclim$Season <- cut(as.numeric(mojclim$Month), 
+                 breaks = c(0, 2, 4, 8, 10, 12), # Set seasons winter Nov to Feb, spring Mar and Apr, summer May to August, fall sept to oct
+                 labels = c("Winter", "Spring", "Summer", "Fall", "Winter"))
+
+seasonal_precip <- aggregate(mojclim$ppt..mm., by = list(Year = mojclim$WaterYear, Season = mojclim$Season), sum)
+seasonal_temp <- aggregate(mojclim$tmean..degrees.C., by = list(mojclim$WaterYear, Season = mojclim$Season), mean)
+
+seasonal_temp$x = round(seasonal_temp$x, 2)
+
+colnames(total_annual_precip) <- c("Year", "TAP")
+colnames(seasonal_precip) <- c("Year", "Season", "SP")
+colnames(mean_annual_temp) <- c("Year", "MAT")
+colnames(seasonal_temp) <- c("Year","Season" ,"MST")
+
+
+# Plot precipitation
+ggplot(data = total_annual_precip, aes(x= Year, y= TAP))+
+  geom_line()
+
+ggplot(data = seasonal_precip,  aes(x= Year, y= SP, colour = Season))+
+  geom_line()
+
+# Plot temperature
+
+ggplot(data = mean_annual_temp, aes(x =Year,  y= MAT))+
+  geom_line()
+
+ggplot(data = seasonal_temp, aes(x= Year, y = MST, color = Season))+
+  geom_line()
+
+# Now we got to add these to my mojdata. The way I've set it up the total annual ppt for 2013 in moj data needs ppt from April 2012 to March 2013. This should be correct as the year comes in
+
+# I'll start by merging ppt and temp that I created
+
+annual <- merge(total_annual_precip, mean_annual_temp, by = "Year")
+seasonal <- merge(seasonal_precip, seasonal_temp, by = c("Year", "Season"))
+
+# Seasonal I'll need to create a column for each season
+
+head(seasonal)
+seasonal <- seasonal |> pivot_wider(names_from = Season, values_from = c(SP, MST), names_sep = "_")
+
+```
+
+
+    Now to merge the climate data with the rest
+    
+```{r}
+
+colnames(mojdata)[1] <- "Year" # Change name to match clim
+
+mojdata <- merge(mojdata, annual, by = "Year")
+mojdata <- merge(mojdata, seasonal, by = "Year")
+
+```
+
+
+```{r}
+
+head(annual)
+head(seasonal)
+
+lag.annual <- annual
+lag.annual$Year <- annual$Year+1
+
+colnames(lag.annual) <- c("Year", "lag.TAP", "lag.MAT")
+
+mojdata <- merge(mojdata, lag.annual, by = "Year")
+
+lag.seasonal <- seasonal
+
+lag.seasonal$Year <- seasonal$Year+1
+
+colnames(lag.seasonal) <- c("Year", "lag.SP_Spring", "lag.SP_Winter",
+                            "lag.SP_Fall", "lag.SP_Summer",
+                            "lag.MST_Spring", "lag.MST_Winter",
+                            "lag.MST_Fall", "lag.MST_Summer")
+
+
+mojdata <- merge(mojdata, lag.seasonal, by = "Year")
+
+```
+
+
+Output the final csv
+
+```{r}
+
+write.csv(mojdata, "Mojave_Data.csv")
+
+```
+
+

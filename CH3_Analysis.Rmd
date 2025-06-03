@@ -1,0 +1,2994 @@
+---
+title: "CH3 Analysis"
+author: "R Pienaar"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Libraries
+
+```{r}
+
+library(ggplot2)
+library(purrr)
+library(lme4)
+library(performance)
+library(glmmTMB)
+library(tidyverse)
+library(ggpubr)
+library(MuMIn)
+options(scipen=999)
+
+common_theme <- theme(
+  text = element_text(size = 16, color = "black", family = "serif"),
+  axis.title = element_text(size = 16, color = "black", family = "serif"),
+  axis.text = element_text(size = 16, color = "black", family = "serif"),
+  legend.text = element_text(size = 16, color = "black", family = "serif"),
+  legend.title = element_text(size = 16, color = "black", family = "serif"),
+  plot.title = element_text(size = 16, color = "black", family = "serif", hjust = 0.5)
+)
+
+```
+
+
+Lets explore the data starting with the Great Basin
+
+Load file
+
+```{r}
+
+gbdata <- read.csv("GreatBasin_Data.csv")
+
+ggplot(data = gbdata, aes(x= Year, y= rich))+
+  stat_summary(geom = "line", fun = "mean")
+
+ggplot(data = gbdata, aes(x= Year, y = simp_div))+
+  stat_summary(geom = "line", fun = "mean")
+
+ggplot(data = gbdata, aes(x= Year, y = shan_div))+
+  stat_summary(geom = "line", fun = "mean")
+
+```
+
+Our first research question was on the effects of fire and rodent exclusion so I am going to start with that
+
+```{r}
+
+head(gbdata)
+
+# Create Fire column with the first letter of Plot
+gbdata$Fire <- substr(gbdata$Plot, 1, 1)
+
+# Create Rodents column with the second letter of Plot
+gbdata$Rodents <- substr(gbdata$Plot, 2, 2)
+
+summary(gbdata$Rodents)
+
+gbdata$Block <- as.factor(gbdata$Block)
+gbdata$Plot <- as.factor(gbdata$Plot)
+gbdata$Fire <- as.factor(gbdata$Fire)
+gbdata$Fire <- factor(gbdata$Fire, levels = c("U", "B"))
+gbdata$Rodents <- as.factor(gbdata$Rodents)
+gbdata$Rodents <- factor(gbdata$Rodents, levels = c("S", "N"))
+
+# Recode Fire column
+gbdata$Fire <- recode(gbdata$Fire, 
+                      "B" = "Burned", 
+                      "U" = "Unburned")
+
+# Recode Rodents column
+gbdata$Rodents <- recode(gbdata$Rodents, 
+                         "N" = "Rodents Excluded", 
+                         "S" = "Rodents Present")
+
+
+```
+
+Start with Richness
+
+```{r}
+
+acf(gbdata$rich)
+
+# I have several resposne variables I could use, i will start with richness, diversity, BRTE
+
+# Richness anova
+rich.lm <- glmmTMB(data = gbdata, rich ~ Fire * Rodents +(1|Block) + ar1(Block + 0 | Year))
+summary(rich.lm)
+r2(rich.lm)
+# Results 
+# Burning increases plant species richness in the Great Basin (B = 0.39, SE = 0.15, p = 0.009)
+# Rodent exclusion decreases plant species richness in the Great Basin (B = -0.26, SE = 0.15, p 0.075)
+# There is a significant interactive effect between burning and rodent exclusion (B = 0.48, SE = 0.21, p = 0.022)
+
+# Now plot it
+
+rich.plot <- ggplot(data = gbdata, aes(x = Year, y = rich, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  coord_cartesian(ylim = c(0,7)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin Species Richness") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+rich.plot
+
+```
+
+Lets do Simpsons diversity next
+
+```{r}
+
+acf(gbdata$simp_div)
+# 
+simp.lm <- glmmTMB(data = gbdata, simp_div ~ Fire * Rodents + (1|Block))
+summary(simp.lm)
+# Results 
+# No significant effects of fire or rodents on simpsons diversity
+
+# Now plot it
+hist(gbdata$simp_div)
+
+simp.plot <- ggplot(data = gbdata, aes(x = Year, y = simp_div, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin Simpson's Diversity") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+
+simp.plot
+
+```
+
+Now Shannon's Diversity
+
+```{r}
+
+acf(gbdata$shan_div)
+# 
+shan.lm <- glmmTMB(data = gbdata, shan_div ~ Fire * Rodents +(1|Block))
+summary(shan.lm)
+# Results 
+# Burning slightly increased Shannons diversity in the Great Basin (B = 0.06, SE = 0.03, p = 0.09)
+
+# Now plot it
+
+shan.plot <- ggplot(data = gbdata, aes(x = Year, y = shan_div, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  coord_cartesian(ylim = c(0,1.5)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin Shannon's Diversity") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+shan.plot
+
+```
+
+Now lets look at cheatgrass density
+
+```{r}
+
+# 
+brte.lm <- glmmTMB(data = gbdata, BRTE ~ Fire * Rodents +(1|Block))
+summary(brte.lm)
+
+acf(gbdata$BRTE) ## No autocorrellation
+
+
+# Now plot it
+
+brte.plot <- ggplot(data = gbdata, aes(x = Year, y = BRTE, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin \n Bromus tectorum \n Density (m^2)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+brte.plot
+summary(gbdata)
+
+```
+
+Squirrel tail
+
+```{r}
+
+# 
+elel.lm <- glmmTMB(data = gbdata, ELEL ~ Fire * Rodents +(1|Block))
+summary(elel.lm)
+# Results 
+# the interaction between fire and rodents was significant (B = 4.02, SE = 2.32, p = 0.08)
+
+# Now plot it
+
+elel.plot <- ggplot(data = gbdata, aes(x = Year, y = ELEL, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin \n Elymus elymoides \n Density (m^2)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+
+elel.plot
+
+```
+
+Cete
+
+```{r}
+
+
+acf(gbdata$CETE)
+# 
+cete.lm <- glmmTMB(data = gbdata, CETE ~ Fire * Rodents +(1|Block))
+summary(cete.lm)
+# Results 
+# Rodents exclusion decreased CETE density (B = -69.3, SE = 34.69, p = 0.046)
+# the interaction between fire and rodents was significant (B = -86.05, SE = 50.26, p = 0.09)
+
+# Now plot it
+
+cete.plot <- ggplot(data = gbdata, aes(x = Year, y = CETE, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin \n Ceratocephala testiculata \n Density (m^2)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+
+cete.plot
+
+```
+
+ALAL
+
+```{r}
+
+acf(gbdata$ALAL)
+
+alal.lm <- glmmTMB(data = gbdata, ALAL ~ Fire * Rodents +(1|Block))
+summary(alal.lm)
+# Results 
+# the interaction between fire and rodents was significant (B = 135.93, SE = 15.15, p < 0.0001)
+
+# Now plot it
+
+alal.plot <- ggplot(data = gbdata, aes(x = Year, y = ALAL, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin \n Allysium allysoides \n Density(m^2)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+
+alal.plot
+
+```
+
+Lets plot climate
+Total Annual Precipitation
+
+```{r}
+
+ggplot(data = gbdata, aes(x = Year, y = TAP)) +
+  geom_line()+
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin \n Total Annual Preciptition (mm)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) 
+
+```
+
+Mean temperature
+
+```{r}
+
+ggplot(data = gbdata, aes(x = Year, y = MAT)) +
+  geom_line()+
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Great Basin \n Mean Annual Temperature (C)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) 
+
+```
+
+Now lets try that with the mojave data
+
+```{r}
+
+mojdata <- read.csv("Mojave_Data.csv")
+head(mojdata)
+
+summary(mojdata)
+```
+
+```{r}
+
+# Fix that one stupid plot
+mojdata$Plot <- recode(mojdata$Plot, "UN " = "UN")
+mojdata$Plot <- as.character(mojdata$Plot)
+mojdata$Plot <- as.factor(mojdata$Plot)
+
+# Create Fire column with the first letter of Plot
+mojdata$Fire <- substr(mojdata$Plot, 1, 1)
+
+# Create Rodents column with the second letter of Plot
+mojdata$Rodents <- substr(mojdata$Plot, 2, 2)
+
+mojdata$Block <- as.factor(mojdata$Block)
+mojdata$Plot <- as.factor(mojdata$Plot)
+mojdata$Fire <- as.factor(mojdata$Fire)
+mojdata$Fire <- factor(mojdata$Fire, levels = c("U", "B"))
+mojdata$Rodents <- as.factor(mojdata$Rodents)
+mojdata$Rodents <- factor(mojdata$Rodents, levels = c("S", "N"))
+
+# Recode Fire column
+mojdata$Fire <- recode(mojdata$Fire, 
+                      "B" = "Burned", 
+                      "U" = "Unburned")
+
+# Recode Rodents column
+mojdata$Rodents <- recode(mojdata$Rodents, 
+                         "N" = "Rodents Excluded", 
+                         "S" = "Rodents Present")
+
+
+```
+
+Start with Richness
+
+```{r}
+
+acf(mojdata$rich)
+
+# I have several resposne variables I could use, i will start with richness, diversity, BRTE
+
+# Richness anova
+moj.rich.lm <- glmmTMB(data = mojdata, rich ~ Fire * Rodents +(1|Block) + ar1(Block + 0 | Year))
+summary(moj.rich.lm)
+# Results 
+# Burning increases plant species richness in the Mojave (B = 0.40, SE = 0.15, p = 0.06)
+
+
+# Now plot it
+
+moj.rich.plot <- ggplot(data = mojdata, aes(x = Year, y = rich, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9), linewidth = 1.5) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Species Richness") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=16, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=16, family = "serif"),
+        axis.title.x  = element_text(size=16, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=16, family = "serif", colour = "black"),
+        legend.text = element_text(size=16, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3"),
+                    labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3"),
+                     labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24),
+                     labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access"))
+
+
+moj.rich.plot
+
+# Percent change for paper
+aggregate(rich ~ Fire, data = mojdata, mean)
+# Unburned	6.488889	
+# Burned	6.901944
+ (6.901944 - 6.488889)/6.488889*100
+
+#Richness increased by 6.365574
+
+# Percent change by year for paper
+aggregate(rich ~ Fire + Year, data = mojdata, mean) |>
+  pivot_wider(names_from = Fire, values_from = rich) %>%
+  mutate(perc_diff = abs((Burned - Unburned) / Unburned) * 100)
+
+# Percent change for paper
+aggregate(rich ~ Rodents, data = mojdata, mean)
+# Present 6.706944	
+# Absent 6.683889
+
+#Richness increased by 6.365574
+
+# Percent change by year for paper
+aggregate(rich ~ Rodents + Year, data = mojdata, mean) |>
+  pivot_wider(names_from = Rodents, values_from = rich) %>%
+  mutate(perc_diff = abs((`Rodents Present` - `Rodents Excluded`) / `Rodents Excluded`) * 100)
+
+
+```
+
+```{r}
+
+acf(mojdata$simp_div)
+
+# 
+moj.simp.lm <- glmmTMB(data = mojdata, simp_div ~ Fire * Rodents+ Year + ar1(Block + 0 | Year))
+
+summary(moj.simp.lm)
+# Results 
+# Rodent exclusion increased simpson's diversity in the Mojave (B = 0.06, SE = 0.02, p = 0.0006)
+
+# Now plot it
+
+moj.simp.plot <- ggplot(data = mojdata, aes(x = Year, y = simp_div, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Simpson's Diversity") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+
+moj.simp.plot
+
+# Percent change for paper
+aggregate(rich ~ Fire, data = mojdata, mean)
+# Unburned	6.488889	
+# Burned	6.901944
+ (6.901944 - 6.488889)/6.488889*100
+
+#Richness increased by 6.365574
+
+# Percent change by year for paper
+aggregate(rich ~ Fire + Year, data = mojdata, mean) |>
+  pivot_wider(names_from = Fire, values_from = rich) %>%
+  mutate(perc_diff = abs((Burned - Unburned) / Unburned) * 100)
+
+# Percent change for paper
+aggregate(rich ~ Rodents, data = mojdata, mean)
+# Present 6.706944	
+# Absent 6.683889
+
+#Richness increased by 6.365574
+
+# Percent change by year for paper
+aggregate(rich ~ Rodents + Year, data = mojdata, mean) |>
+  pivot_wider(names_from = Rodents, values_from = rich) %>%
+  mutate(perc_diff = abs((`Rodents Present` - `Rodents Excluded`) / `Rodents Excluded`) * 100)
+
+```
+
+```{r}
+
+acf(mojdata$shan_div)
+# 
+moj.shan.lm <- glmmTMB(data = mojdata, shan_div ~ Fire * Rodents+ Year + ar1(Block + 0 | Year))
+summary(moj.shan.lm)
+VarCorr(moj.shan.lm)
+# Results 
+# Burning slightly increased Shannons diversity in the Mojave (B = 0.08, SE = 0.04, p = 0.043)
+# Rodent exclusion increased Shannons diversity in the Mojave (B = 0.13, SE = 0.04, p = 0.0003)
+
+# Now plot it
+
+moj.shan.plot <- ggplot(data = mojdata, aes(x = Year, y = shan_div, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9), linewidth = 1.5) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Shannon's Diversity") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=16, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=16, family = "serif"),
+        axis.title.x  = element_text(size=16, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=16, family = "serif", colour = "black"),
+        legend.text = element_text(size=16, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3"),
+                    labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3"),
+                     labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24),
+                     labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access"))
+
+
+moj.shan.plot
+
+# Percent change for paper
+aggregate(shan_div ~ Fire, data = mojdata, mean)
+# Unburned	0.7184890		
+# Burned	0.7953773	
+ (0.7953773	 - 0.7184890	)/0.7184890	*100
+
+#Shannon's Diversity increased by 10.70139 %
+
+# Percent change by year for paper
+aggregate(shan_div ~ Fire + Year, data = mojdata, mean) |>
+  pivot_wider(names_from = Fire, values_from = shan_div) %>%
+  mutate(perc_diff = abs((Burned - Unburned) / Unburned) * 100)
+
+# Percent change for paper
+aggregate(shan_div ~ Rodents, data = mojdata, mean)
+# Present 0.7115092	
+# Absent 0.8023571
+(0.8023571- 0.7115092	)/0.7115092	*100
+
+# Rodent exclusion increased diversity by 12.76834 %
+
+#Richness increased by 6.365574
+
+# Percent change by year for paper
+aggregate(shan_div ~ Rodents + Year, data = mojdata, mean) |>
+  pivot_wider(names_from = Rodents, values_from = shan_div) %>%
+  mutate(perc_diff = abs((`Rodents Present` - `Rodents Excluded`) / `Rodents Excluded`) * 100)
+
+```
+
+
+Total Density
+
+
+```{r}
+
+mojdata$totaldensity <- rowSums(mojdata[5:63])
+
+acf(mojdata$totaldensity)
+
+# BRRU instead of BRTE for the Mojave
+moj.td.lm <- glmmTMB(data = mojdata, totaldensity ~ Fire * Rodents + ar1(Block + 0 | Year)) 
+summary(moj.td.lm)
+# Results 
+# No significant effects
+
+# Now plot it
+
+moj.td.plot <- ggplot(data = mojdata, aes(x = Year, y = totaldensity, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9), linewidth =1.5) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab(bquote("Total Plant Density  " (m^2))) +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=16, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=16, family = "serif"),
+        axis.title.x  = element_text(size=16, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=16, family = "serif", colour = "black"),
+        legend.text = element_text(size=16, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3"),
+                    labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3"),
+                     labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24),
+                     labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access"))
+
+moj.td.plot
+
+# Percent change for paper
+aggregate(totaldensity ~ Fire, data = mojdata, mean)
+# Unburned	864.5775		
+# Burned	1228.5234	
+ (1228.5234		 - 864.5775	)/864.5775	*100
+
+#Total density increased by 42.09523 %
+
+# Percent change by year for paper
+aggregate(totaldensity ~ Fire + Year, data = mojdata, mean) |>
+  pivot_wider(names_from = Fire, values_from = totaldensity) %>%
+  mutate(perc_diff = abs((Burned - Unburned) / Unburned) * 100)
+
+# Percent change for paper
+aggregate(totaldensity ~ Rodents, data = mojdata, mean)
+# Present 1088.032	
+# Absent 1005.068	
+(1005.068	- 1088.032		)/1088.032		*100
+
+# Rodent exclusion decreased  density by 7.625143%
+
+#Richness increased by 6.365574
+
+# Percent change by year for paper
+aggregate(totaldensity ~ Rodents + Year, data = mojdata, mean) |>
+  pivot_wider(names_from = Rodents, values_from = totaldensity) %>%
+  mutate(perc_diff = abs((`Rodents Present` - `Rodents Excluded`) / `Rodents Excluded`) * 100)
+
+```
+
+
+BRRU
+
+```{r}
+
+acf(mojdata$BRRU)
+
+# BRRU instead of BRTE for the Mojave
+moj.brru.lm <- glmmTMB(data = mojdata, BRRU ~ Fire * Rodents +(1|Block)+ ar1(Block + 0 | Year)) 
+summary(moj.brru.lm)
+# Results 
+# No significant effects
+
+# Now plot it
+
+moj.brru.plot <- ggplot(data = mojdata, aes(x = Year, y = BRRU, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab(bquote("Bromus rubens Density  " (m^2))) +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+moj.brru.plot
+
+```
+
+ERCI
+
+```{r}
+
+
+# BRRU instead of BRTE for the Mojave
+moj.erci.lm <- glmmTMB(data = mojdata, ERCI ~ Fire * Rodents +(1|Block)) 
+summary(moj.erci.lm)
+# Results 
+# Fire increased ERCI in the mojave (B = 34.64, SE = 4.42, p < 0.0001)
+# There is also a significant interactin (B = 10.31, SE = 6.22, = 0.0979)
+
+# Now plot it
+
+moj.erci.plot <- ggplot(data = mojdata, aes(x = Year, y = ERCI, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Mojave \n Erodium cicutarium \n Density (m^2)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+moj.erci.plot
+
+
+```
+
+SCAR
+```{r}
+
+acf(mojdata$SCAR)
+
+# BRRU instead of BRTE for the Mojave
+moj.scar.lm <- glmmTMB(data = mojdata, SCAR ~ Fire * Rodents +(1|Block)+ ar1(Block + 0 | Year)) 
+summary(moj.scar.lm)
+# Results 
+# Fire increased SCAR in the mojave (B = 60.43, SE = 15.39, p < 0.0001)
+# Rodent exclusion decreased SCAR (B = -51016, SE = 15.02, p = 0.0007)
+
+# Now plot it
+
+moj.scar.plot <- ggplot(data = mojdata, aes(x = Year, y = SCAR, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab(bquote("Schismus arabicus Density  " (m^2))) +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+moj.scar.plot
+
+
+```
+
+ASNU
+
+```{r}
+
+
+# BRRU instead of BRTE for the Mojave
+moj.asnu.lm <- glmmTMB(data = mojdata, ASNU ~ Fire * Rodents +(1|Block)) 
+summary(moj.asnu.lm)
+# Results 
+# Fire increased ASNU in the mojave (B = 11.57, SE = 2.98, p = 0.0001)
+# Rodent exclusion increased ASNU (B = 12.27, SE = 2.9, p < 0.0001)
+
+# Now plot it
+
+moj.asnu.plot <- ggplot(data = mojdata, aes(x = Year, y = ASNU, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9), linewidth = 1.5) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Mojave \n Astragalus nuttallianus \n Density (m^2)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=16, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=16, family = "serif"),
+        axis.title.x  = element_text(size=16, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=16, family = "serif", colour = "black"),
+        legend.text = element_text(size=16, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+moj.asnu.plot
+
+
+```
+
+Mojave climate plots
+
+```{r}
+
+ggplot(data = mojdata, aes(x = Year, y = TAP)) +
+  geom_line()+
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Mojave \n Total Annual Preciptition (mm)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) 
+
+```
+
+```{r}
+
+ggplot(data = mojdata, aes(x = Year, y = MAT)) +
+  geom_line()+
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Mojave \n Mean Annual Temperature (C)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) 
+
+```
+
+Rodent abudnance
+
+```{r}
+
+ggplot(data = mojdata, aes(x = Year, y = Rodent.Abundance, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9)) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Mojave \n rodeny \n Density (m^2)") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=12, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=12, family = "serif"),
+        axis.title.x  = element_text(size=12, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=12, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=12, family = "serif", colour = "black"),
+        legend.text = element_text(size=12, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24))
+
+```
+Do the cover plot from the mcc dataframe
+
+```{r}
+
+mcc <- read.csv("Moj_Cover.csv")
+acf(mcc$Total.Cover)
+mcc$Fire <- factor(mcc$Fire, levels = c("Unburned", "Burned"))
+mcc$Rodents <- factor(mcc$Rodents, levels = c("Rodents Present", "Rodents Excluded"))
+mcc$Block <- as.factor(mcc$Block)
+
+#Also bring in GB
+gbcc <- read.csv("rushcoverpercent.csv")
+summary(gbcc)
+gbcc$Block <- as.factor(gbcc$Block)
+gbcc$Plot <- as.factor(gbcc$Plot)
+gbcc <- gbcc |>
+  rename(Year = DATE)
+#merge gbdata and gbcc
+gbdenscov <- merge(gbdata, gbcc, by = c("Year", "Block", "Plot"))
+write.csv(gbdenscov, "gbdenscov.csv")
+# BRRU instead of BRTE for the Mojave
+moj.cover.lm <- glmmTMB(data = mcc, Total.Cover ~ Fire * Rodents+ Year +ar1(Block +0 |Year)) 
+VarCorr(moj.cover.lm)
+summary(moj.cover.lm)
+
+mcc %>%
+  filter(Year == 2019) %>%
+  summarise(avg_cover = mean(Total.Cover, na.rm = TRUE))
+# Now plot it
+
+moj.cover.plot <- ggplot(data = mcc, aes(x = Year, y = Total.Cover, fill = Plot, shape = Plot, colour = Plot)) +
+  stat_summary(geom = "point", fun = 'mean', position = position_dodge(width = 0.9), size = 3) +
+  stat_summary(geom = "line", fun = "mean", position = position_dodge(width = 0.9), linewidth = 1.5) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               position = position_dodge(width = 0.9), 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0), limits = c(0,100)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Total Plant Cover %") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=16, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=16, family = "serif"),
+        axis.title.x  = element_text(size=16, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=16, family = "serif", colour = "black"),
+        legend.text = element_text(size=16, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+  scale_fill_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3"),
+                    labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access")) +
+  scale_color_manual(values = c("BN" = "red", "BS" = "black", "UN" = "blue", "US" = "green3"),
+                     labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access")) +
+  scale_shape_manual(values = c("BN" = 21, "UN"= 21, "BS" = 24, "US" = 24),
+                     labels = c("BN" = "Burned Rodent Exclusion", "BS" = "Burned Rodent Access", "UN" = "Unburned Rodent Exclusion", "US" = "Unburned Rodent Access"))
+
+moj.cover.plot
+
+# Percent change for paper
+aggregate(Total.Cover ~ Fire, data = mcc, mean)
+# Unburned	60.84322		
+# Burned	67.03767
+ (67.03767	 - 60.84322	)/60.84322		*100
+
+#Richness increased by 10.181%
+
+# Percent change by year for paper
+aggregate(Total.Cover ~ Fire + Year, data = mcc, mean) |>
+  pivot_wider(names_from = Fire, values_from = Total.Cover) %>%
+  mutate(perc_diff = abs((Burned - Unburned) / Unburned) * 100)
+
+
+# Percent change for paper
+aggregate(Total.Cover ~ Rodents, data = mcc, mean)
+# Presemt	64.49100		
+# Burned	63.38989	
+ (63.38989 - 64.49100)/64.49100		*100
+
+# -1.707386 %
+
+# Percent change by year for paper
+aggregate(Total.Cover ~ Rodents + Year, data = mcc, mean) |>
+  pivot_wider(names_from = Rodents, values_from = Total.Cover) %>%
+  mutate(perc_diff = abs((`Rodents Present` - `Rodents Excluded`) / `Rodents Excluded`) * 100)
+
+```
+
+
+Put all those plots together
+
+```{r}
+
+ggarrange(rich.plot, moj.rich.plot,
+          simp.plot, moj.simp.plot,
+          shan.plot, moj.shan.plot,
+          ncol = 2, nrow = 3,
+          common.legend = TRUE,
+          legend = "right")
+
+ggarrange(moj.td.plot, moj.rich.plot,
+          moj.cover.plot, moj.shan.plot,
+          ncol = 1, nrow = 4,
+          common.legend = TRUE,
+          legend = "right",
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv")
+
+ggarrange(moj.td.plot, moj.rich.plot,
+          moj.cover.plot, moj.shan.plot,
+          ncol = 2, nrow = 2,
+          common.legend = TRUE,
+          legend = "right",
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv")
+
+ggarrange(
+          moj.shan.plot, moj.cover.plot,
+          ncol = 2, nrow = 1,
+          common.legend = TRUE,
+          legend = "right",
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv")
+
+```
+
+put all the species plots together
+
+```{r}
+
+ggarrange(brte.plot, moj.brru.plot,
+          elel.plot, moj.scar.plot,
+          alal.plot, moj.erci.plot,
+          cete.plot, moj.asnu.plot,
+          ncol = 2, nrow = 4,
+          common.legend = TRUE,
+          legend = "right")
+
+ggarrange(moj.brru.plot,
+          moj.scar.plot,
+           ncol = 1, nrow = 2,
+          common.legend = TRUE,
+          legend = "right")
+
+
+```
+
+just invasive species plots
+
+```{r}
+
+ggarrange(brte.plot, moj.brru.plot,
+          cete.plot, moj.scar.plot,
+          alal.plot, 
+          ncol = 2, nrow = 3,
+          common.legend = TRUE,
+          legend = "right")
+
+
+
+
+```
+
+Bar graphs for plot effects
+
+```{r}
+
+
+g1 <- ggplot(data = mcc, aes(x = Fire, y = Total.Cover, fill = Rodents, colour = Rodents)) +
+  stat_summary(geom = "bar", fun = mean, position = position_dodge(width = 0.9)) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = position_dodge(width = 0.9), width = 0.2, color = "black") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0), limits = c(0,100)) +
+  common_theme +  
+  ylab("Total Plant Cover %")+
+  scale_fill_manual(values = c("Rodents Present" = "white", "Rodents Excluded" = "gray35"))+
+  scale_color_manual(values = c("Rodents Present" = "black", "Rodents Excluded" = "black"))  # Black outlines
+
+g1
+
+g2 <- ggplot(data = mojdata, aes(x = Fire, y = shan_div, fill = Rodents, color = Rodents)) +
+  stat_summary(geom = "bar", fun = mean, position = position_dodge(width = 0.9)) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = position_dodge(width = 0.9), width = 0.2, color = "black") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0), limits = c(0,2)) +
+  coord_cartesian(ylim = c(0,1))+
+  common_theme +  
+  ylab("Shannon's Diversity")+
+  scale_fill_manual(values = c("Rodents Present" = "white", "Rodents Excluded" = "gray35"))+
+  scale_color_manual(values = c("Rodents Present" = "black", "Rodents Excluded" = "black"))  # Black outlines
+
+g2
+
+ggarrange(g1,g2,
+          ncol = 2, nrow = 1,
+          common.legend = TRUE,
+          legend = 'right',
+          align = "hv")
+
+
+```
+
+Presentation Plots
+
+```{r}
+
+ggplot(data = mcc, aes(x = Year, y = Total.Cover, fill = Fire, shape = Fire, colour = Fire)) +
+  stat_summary(geom = "point", fun = 'mean', size = 3) +
+  stat_summary(geom = "line", fun = "mean", linewidth = 1.5) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Total Plant Cover %") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=16, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=16, family = "serif"),
+        axis.title.x  = element_text(size=16, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=16, family = "serif", colour = "black"),
+        legend.text = element_text(size=16, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+      scale_fill_manual(values = c("Unburned" = "blue", "Burned" = "red")) +
+      scale_color_manual(values = c("Unburned" = "blue", "Burned" = "red")) 
+
+ggplot(data = mojdata, aes(x = Year, y = shan_div, fill = Fire, shape = Fire, colour = Fire)) +
+  stat_summary(geom = "point", fun = 'mean',  size = 3) +
+  stat_summary(geom = "line", fun = "mean",  linewidth = 1.5) +
+    stat_summary(geom = "errorbar", fun.data = mean_se, 
+               width = 0.2) +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(breaks = seq(min(gbdata$Year), max(gbdata$Year), by = 2)) +  # Set breaks to every other year
+  ylab("Shannon's Diversity") +
+  xlab(element_blank()) +
+  theme(plot.title    = element_text(size=16, family = "serif", colour = "black"),
+        plot.subtitle = element_text(size=16, family = "serif"),
+        axis.title.x  = element_text(size=16, family = "serif", colour = "black"),
+        axis.title.y  = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.x   = element_text(size=16, family = "serif", colour = "black"),
+        axis.text.y   = element_text(size=16, family = "serif", colour = "black"),
+        legend.text = element_text(size=16, family = "serif", colour = "black"),
+        legend.title = element_blank(),
+        panel.border = element_blank()) +
+      scale_fill_manual(values = c("Unburned" = "blue", "Burned" = "red")) +
+      scale_color_manual(values = c("Unburned" = "blue", "Burned" = "red")) 
+
+```
+
+
+
+Run some stats
+
+```{r}
+
+anocover <- aov(data = mcc, Total.Cover ~ Fire * Rodents)
+
+summary(anocover)
+
+anodiv <- aov(data = mojdata, shan_div ~ Fire * Rodents)
+
+summary(anodiv)
+
+```
+
+
+Percentage changes
+
+```{r}
+
+# Richness
+aggregate(rich ~ Fire, data = mojdata, mean)
+# Unburned	6.488889	
+# Burned	6.901944
+ (6.901944 - 6.488889)/6.488889*100
+
+#Richness increased by 6.365574
+
+# Simpson's diversity
+# Percent change for paper
+aggregate(simp_div ~ Fire, data = mojdata, mean)
+# Unburned	1.737617		
+# Burned	1.853886	
+ (1.853886 - 1.737617	)/1.737617	*100
+
+# Simpson's diveersity increased by 6.69129
+
+# Shannon's diversity
+aggregate(shan_div ~ Fire, data = mojdata, mean)
+# Unburned 0.7184890	
+# Burned 0.7953773
+(0.7953773 - 0.7184890)/0.7184890	*100
+
+#Shannon's diversity increased by 10.70139
+
+# Cover
+aggregate(Total.Cover ~ Fire, data = mcc, mean)
+# Unburned 60.84322
+# Burned 67.03767
+67.03767 - 60.84322
+# Cover increased by 6.19445
+
+```
+
+
+I need to create a file specifically with red brome and cheat grass for my rodent structural equation modeling
+
+```{r}
+
+head(gbdata)
+
+cheatgrass <- gbdata |> 
+  group_by(Year, Block, Plot) |>
+  summarise(BRTE.density = mean(BRTE), TAP = mean(TAP), MAT = mean(MAT))
+
+
+
+write.csv(cheatgrass, "BRTE_density.csv")
+
+brome <- mojdata |>
+  group_by(Block, Plot, Year) |> 
+  summarise(BRRU.density = mean(BRRU), TAP = mean(TAP), MAT = mean(MAT))
+
+write.csv(brome, "BRRU_density.csv")
+
+```
+```{r}
+
+
+mojdata$density <- rowSums(mojdata[, 5:63])
+out1 <- mojdata |> select(Year, Block, Plot, BRRU, SCAR, rich, shan_div, simp_div, density, TAP, MAT,
+                          Rodent.Abundance, Rodent.Richness, Rodent.Simp, Rodent.Shan, Fire, Rodents)
+
+out2 <- mcc |> select(Year, Block, Plot, Total.Cover)
+
+mojsemdata <- merge(out1, out2, by = c("Year", "Block", "Plot"))
+
+
+
+```
+
+
+Send mccplot data out for SEM in CH 2
+
+
+
+```{r}
+
+write.csv(mojsemdata, "MojRodentSEM.csv")
+
+```
+
+Now lets start my model selection
+
+I think I want 15 models that need to be a priori, all should include mixed effects, they are likely to be zero inflated and I need an autoregressive term
+glmmTMB should be able to do all of that I think but I need to figure out how.
+
+My first test run will be with richness in the Great Basin because its not zero inflated I don't think
+
+I am going to do a random forest to get relative variable importance to see what should be included in our model
+
+```{r}
+
+library(randomForest)
+colnames(gbdata)
+
+# I should scale my data before I do any modeling
+
+### Imma keep an unscaled version for later
+
+gbplotdata <- gbdata
+mojplotdata <- mojdata
+
+
+
+gbdata[5:31] <- scale(gbdata[c(5:31)])
+gbdata[35:58] <- scale(gbdata[35:58])
+
+gbdata <- gbdata |>
+  replace(is.na(gbdata), 0)
+
+mojdata[5:62] <- scale(mojdata[5:62])
+mojdata[66:89] <- scale(mojdata[66:89])
+
+mojdata <- mojdata |> 
+  replace(is.na(mojdata), 0)
+
+colSums(is.na(gbdata))
+
+
+### GB variable importance
+gb.rf.rich <- randomForest(data = gbdata, rich ~ Year + Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents + BRTE + ALAL + CETE +
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+str(gbdata$rich)
+gb.rf.rich
+a1 = varImpPlot(gb.rf.rich) # Spring and summmer temp most important, fall rain most important, rodent abundance most important
+
+gb.rf.simp <- randomForest(data = gbdata, simp_div ~ Year + Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents + BRTE+   ALAL + CETE +
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+a2 = varImpPlot(gb.rf.simp) # Summer Temp, Fall rain, Rodent abundance
+
+gb.rf.shan <- randomForest(data = gbdata, shan_div ~ Year   + Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents + BRTE  + ALAL + CETE +
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+a3 = varImpPlot(gb.rf.shan)# Summer Temp, Fall rain, Rodent abundance
+
+gb.rf.brte <- randomForest(data = gbdata, BRTE ~ Year  + Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents+
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+a4 = varImpPlot(gb.rf.brte) # Fire then rodent presence, rodent abundance then winter temp then rodent richness, then fall precip
+
+
+# Mojave
+
+moj.rf.rich <- randomForest(data = mojdata, rich ~ Year+ Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents+ BRRU + SCAR + 
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+
+moj.rf.rich
+b1 = varImpPlot(moj.rf.rich) # Fall PPt then spring and summer temp, abundance highest for rodents
+
+moj.rf.simp <- randomForest(data = mojdata, simp_div ~ Year + Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents+ BRRU + SCAR +
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+b2 = varImpPlot(moj.rf.simp) # spring temp rodent abundance spring and summer ppt
+
+moj.rf.shan <- randomForest(data = mojdata, shan_div ~ Year  + Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents+ BRRU + SCAR +
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+b3 = varImpPlot(moj.rf.shan) # spring temp spring and summer ppt abundance highest for rodents
+
+moj.rf.brru <- randomForest(data = mojdata, BRRU ~  Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents+
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+b4= varImpPlot(moj.rf.brru) # TAP, Fall temp, rodent abundance
+
+moj.rf.cover <- randomForest(data = mcc, Total.Cover ~  Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents+
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter )
+
+varImpPlot(moj.rf.cover)
+
+moj.rf.density <- randomForest(data = mojdata, totaldensity ~ Year + Rodent.Abundance + Rodent.Richness + Rodent.Simp + Rodent.Shan + TAP + MAT +
+                             SP_Spring +SP_Summer + SP_Fall + SP_Winter + MST_Spring + MST_Summer + MST_Fall + MST_Winter + Fire + Rodents+  
+                             lag.TAP + lag.MAT + lag.SP_Spring + lag.SP_Summer + lag.SP_Fall + lag.SP_Winter + lag.MST_Spring + lag.MST_Summer + lag.MST_Fall + lag.MST_Winter)
+
+moj.rf.density
+
+varImpPlot(moj.rf.density)
+
+```
+
+Candidate list of models for GB
+
+```{r}
+
+null <- ' 1+ (1|Block)+ar1(Block + 0 | Year)'
+
+exp <- 'Fire * Rodents + (1|Block)+ ar1(Block + 0 | Year)'
+
+inv <- 'BRTE+ ALAL + CETE +(1|Block) + ar1(Block + 0 | Year)'
+
+tot.clim <- 'TAP + MAT +(1|Block) + ar1(Block + 0 | Year)'
+
+global <- 'TAP + MAT + BRTE + Fire + Rodents + CETE + ALAL +(1|Block) + ar1(Block + 0 | Year)'
+
+rfbest <- 'BRTE + MST_Summer + lag.TAP + ALAL+(1|Block) + ar1(Block + 0 | Year)'
+
+invclim <- 'BRTE + CETE + ALAL + TAP + MAT +(1|Block) + ar1(Block + 0 | Year)'
+
+invlagclim <- 'BRTE + CETE + ALAL + lag.TAP + lag.MAT +(1|Block) + ar1(Block + 0 | Year)'
+
+climrfbest <- 'MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall+(1|Block) + ar1(Block + 0 | Year)'
+
+rfclimfire <- 'MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall + Fire+(1|Block) + ar1(Block + 0 | Year)'
+
+rfclimrod <- 'MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall + Rodents+(1|Block) + ar1(Block + 0 | Year)'
+
+rodents <- 'Rodent.Abundance+(1|Block) + ar1(Block + 0 | Year)'
+
+rodentfire <- 'Rodent.Abundance +Fire +(1|Block) + ar1(Block + 0 | Year)'
+
+rodfireclim <- 'Rodent.Abundance * Fire + Fire*MST_Summer + Fire * lag.TAP +(1|Block) + ar1(Block + 0 | Year)'
+
+
+```
+
+
+
+Great Basin models
+
+Richness
+
+```{r}
+
+hist(gbdata$rich) #nice normal distribution for my poisson data
+
+#lets look for temporal autocorrelation
+acf(gbdata$rich)
+
+# These models are going to be defined based on a priori hypotheses
+
+# Null model to compare to as a baseline 
+gb.rich.null <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", null))) # Adding AR(1) correlation structure
+summary(gb.rich.null)
+
+# Experimental model that considers the treatments we imposed
+gb.rich.exp <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", exp))) # Adding AR(1) correlation structure
+summary(gb.rich.exp)
+
+# Invasive species model looking at cheatgrass effects
+gb.rich.inv <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", inv)))
+summary(gb.rich.inv)
+
+# Climate model
+gb.rich.clim <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", tot.clim)))
+summary(gb.rich.clim)
+
+# Global
+gb.rich.global <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", global)))
+summary(gb.rich.global)
+
+# RF Best
+gb.rich.rfbest <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", rfbest)))
+summary(gb.rich.rfbest)
+
+
+gb.rich.invclim <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", invclim)))
+
+gb.rich.invlagclim <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", invlagclim)))
+
+gb.rich.climrfbest <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", climrfbest)))
+
+gb.rich.rfclimfire <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", rfclimfire)))
+
+gb.rich.rfclimrod <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", rfclimrod)))
+
+gb.rich.rodents <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", rodents)))
+
+gb.rich.rodentsfire <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", rodentfire)))
+
+gb.rich.rodfireclim <- glmmTMB(data = gbdata, 
+                        formula = as.formula(paste("rich ~", rodfireclim)))
+
+
+gb.rich.ints <- glmmTMB(data = gbdata, 
+                        rich ~ MST_Summer * Fire + lag.TAP * Fire + MST_Spring * Fire + lag.SP_Fall *Fire +(1|Block)+ ar1(Block + 0 | Year))
+
+gb.rich.intsall <- glmmTMB(data = gbdata, 
+                        rich ~ MST_Summer * Fire + lag.TAP * Fire + MST_Spring * Fire + lag.SP_Fall *Fire + Rodent.Abundance*Fire+(1|Block)+ ar1(Block + 0 | Year))
+
+gb.rich.sel <- model.sel(gb.rich.clim, gb.rich.exp, gb.rich.global, gb.rich.inv, gb.rich.invclim, gb.rich.null, 
+                         gb.rich.rfbest, gb.rich.rfclimfire, gb.rich.rfclimrod, gb.rich.invlagclim, gb.rich.rodents,
+                         gb.rich.rodentsfire, gb.rich.ints, gb.rich.rodfireclim, gb.rich.intsall, gb.rich.climrfbest, gb.rich.null)
+gb.rich.sel
+
+```
+
+Lets look at some outputs for the top model
+
+```{r}
+
+summary(gb.rich.ints)
+
+r2(gb.rich.ints)
+
+```
+Lets plot those effects
+
+```{r}
+
+
+figgra<- ggplot(data = gbplotdata, aes(x= MST_Summer, y = rich, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", aes(fill = Fire), alpha = 0.2) +  # Regression line with CI
+  labs(x = "MST Summer (ºC) ", y = "Richness", colour = "Fire", fill = "Fire") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  scale_fill_manual(values = c("turquoise2", "firebrick2"))+
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+  
+figgra
+
+figgrb<- ggplot(data = gbplotdata, aes(x= lag.TAP, y = rich, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", aes(fill = Fire), alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag TAP (mm)", y = "Richness", colour = "Fire", fill = "Fire") +
+   scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  scale_fill_manual(values = c("turquoise2", "firebrick2"))+
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figgrc<- ggplot(data = gbplotdata, aes(x= MST_Spring, y = rich, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", aes(fill = Fire), alpha = 0.2) +  # Regression line with CI
+  labs(x = "MST Spring (ºC)", y = "Richness", colour = "Fire", fill = "Fire") +
+   scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  scale_fill_manual(values = c("turquoise2", "firebrick2"))+
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figgrd <- ggplot(data = gbplotdata, aes(x= lag.SP_Fall, y = rich, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", aes(fill = Fire), alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Fall PPT (mm)", y = "Richness", colour = "Fire", fill = "Fire") +
+   scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  scale_fill_manual(values = c("turquoise2", "firebrick2"))+
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+ggarrange(figgra, figgrb,
+          figgrc, figgrd,
+          ncol = 1, nrow = 4,
+          common.legend = TRUE,
+          legend = "right",
+          labels = "AUTO", font.label = list(family="serif", size = 12))
+
+
+
+```
+
+
+```{r}
+
+
+hist(gbdata$simp_div) #nice normal distribution for my poisson data
+summary(gbdata$simp_div)
+#lets look for temporal autocorrelation
+acf(gbdata$simp_div)
+
+# These models are going to be defined based on a priori hypotheses
+
+# Null model to compare to as a baseline 
+gb.simp_div.null <- glmmTMB(data = gbdata,
+                            simp_div ~ 1 + (1|Block),
+                        family = gaussian()) # Adding AR(1) correlation structure
+summary(gb.simp_div.null)
+
+# Experimental model that considers the treatments we imposed
+gb.simp_div.exp <- glmmTMB(data = gbdata, 
+                        simp_div ~Fire * Rodents + (1|Block)) # Adding AR(1) correlation structure
+summary(gb.simp_div.exp)
+
+# Invasive species model looking at cheatgrass effects
+gb.simp_div.inv <- glmmTMB(data = gbdata, 
+                        simp_div ~ BRTE + CETE + ALAL + (1|Block))
+summary(gb.simp_div.inv)
+
+# Climate model
+gb.simp_div.clim <- glmmTMB(data = gbdata, 
+                        simp_div ~ TAP + MAT +(1|Block))
+summary(gb.simp_div.clim)
+
+# Global
+gb.simp_div.global <- glmmTMB(data = gbdata, 
+                        simp_div ~ TAP + MAT + BRTE + Fire + Rodents + CETE + ALAL + (1|Block))
+summary(gb.simp_div.global)
+
+# RF Best
+gb.simp_div.rfbest <- glmmTMB(data = gbdata, 
+                        simp_div ~ BRTE + MST_Summer + lag.TAP + ALAL+(1|Block))
+summary(gb.simp_div.rfbest)
+
+
+gb.simp_div.invclim <- glmmTMB(data = gbdata, 
+                        simp_div ~ BRTE + CETE + ALAL + TAP + MAT +(1|Block))
+
+gb.simp_div.invlagclim <- glmmTMB(data = gbdata, 
+                        simp_div ~ BRTE + CETE + ALAL + lag.TAP + lag.MAT +(1|Block))
+
+gb.simp_div.climrfbest <- glmmTMB(data = gbdata, 
+                        simp_div ~ MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall+(1|Block))
+
+gb.simp_div.rfclimfire <- glmmTMB(data = gbdata, 
+                        simp_div ~ MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall + Fire+(1|Block))
+
+gb.simp_div.rfclimrod <- glmmTMB(data = gbdata, 
+                        simp_div~ MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall + Rodents+(1|Block))
+
+gb.simp_div.rodents <- glmmTMB(data = gbdata, 
+                        simp_div ~ Rodent.Abundance+(1|Block))
+
+gb.simp_div.rodentsfire <- glmmTMB(data = gbdata, 
+                        simp_div ~Rodent.Abundance +Fire +(1|Block) )
+
+gb.simp_div.ints <- glmmTMB(data = gbdata, 
+                        simp_div ~ MST_Summer * Fire + lag.TAP * Fire + MST_Spring * Fire + lag.SP_Fall *Fire +(1|Block))
+
+gb.simp_div.intsall <- glmmTMB(data = gbdata, 
+                        simp_div ~ MST_Summer * Fire + lag.TAP * Fire + MST_Spring * Fire + lag.SP_Fall *Fire + Rodent.Abundance*Fire+(1|Block))
+
+
+gb.simp_div.sel <- model.sel(gb.simp_div.clim, gb.simp_div.exp, gb.simp_div.global, gb.simp_div.inv, gb.simp_div.invclim, gb.simp_div.null, 
+                         gb.simp_div.rfbest, gb.simp_div.rfclimfire, gb.simp_div.rfclimrod, gb.simp_div.invlagclim, gb.simp_div.rodents,
+                         gb.simp_div.rodentsfire, gb.simp_div.climrfbest, gb.simp_div.ints, gb.simp_div.intsall)
+gb.simp_div.sel
+r2(gb.simp_div.rfclimfire)
+
+```
+Lets do Simpsons diversity for the Great Basin
+
+```{r}
+
+summary(gb.simp_div.rfclimfire)
+
+
+figgia <- ggplot(data = gbplotdata, aes(x= MST_Summer, y = simp_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "MST Summer (ºC)", y = "Simpson's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figgib<- ggplot(data = gbplotdata, aes(x= lag.TAP, y = simp_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag TAP (mm)", y = "Simpson's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figgic<- ggplot(data = gbplotdata, aes(x= MST_Spring, y = simp_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "MST Spring (ºC)", y = "Simpson's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figgid<- ggplot(data = gbplotdata, aes(x= lag.SP_Fall, y = simp_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Fall PPT (mm)", y = "Simpson's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figgie<- ggplot(data = gbplotdata, aes(x= Fire, y = simp_div, fill  = Fire))+
+  geom_boxplot()+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  labs(x = "Fire", y = "Simpson's Diversity", colour = "Fire", fill = "Fire") +
+    scale_fill_manual(values = c("turquoise2", "firebrick2"))+
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figgie
+
+ggarrange(figgia, figgib,
+          figgic, figgid,
+          figgie,
+          ncol = 1, nrow = 4,
+          legend = "right",
+          labels = "AUTO", font.label = list(family="serif", size = 12))
+
+
+
+```
+
+
+Shannons Diversity
+
+
+```{r}
+
+# Null model to compare to as a baseline 
+gb.shan_div.null <- glmmTMB(data = gbdata,
+                            shan_div ~ 1 + (1|Block),
+                        family = gaussian()) # Adding AR(1) correlation structure
+summary(gb.shan_div.null)
+
+# Experimental model that considers the treatments we imposed
+gb.shan_div.exp <- glmmTMB(data = gbdata, 
+                        shan_div ~Fire * Rodents + (1|Block)) # Adding AR(1) correlation structure
+summary(gb.shan_div.exp)
+
+# Invasive species model looking at cheatgrass effects
+gb.shan_div.inv <- glmmTMB(data = gbdata, 
+                        shan_div ~ BRTE + CETE + ALAL + (1|Block))
+summary(gb.shan_div.inv)
+
+# Climate model
+gb.shan_div.clim <- glmmTMB(data = gbdata, 
+                        shan_div ~ TAP + MAT +(1|Block))
+summary(gb.shan_div.clim)
+
+# Global
+gb.shan_div.global <- glmmTMB(data = gbdata, 
+                        shan_div ~ TAP + MAT + BRTE + Fire + Rodents + CETE + ALAL + (1|Block))
+summary(gb.shan_div.global)
+
+# RF Best
+gb.shan_div.rfbest <- glmmTMB(data = gbdata, 
+                        shan_div ~ BRTE + MST_Summer + lag.TAP + ALAL+(1|Block))
+summary(gb.shan_div.rfbest)
+
+
+gb.shan_div.invclim <- glmmTMB(data = gbdata, 
+                        shan_div ~ BRTE + CETE + ALAL + TAP + MAT +(1|Block))
+
+gb.shan_div.invlagclim <- glmmTMB(data = gbdata, 
+                        shan_div ~ BRTE + CETE + ALAL + lag.TAP + lag.MAT +(1|Block))
+
+gb.shan_div.climrfbest <- glmmTMB(data = gbdata, 
+                        shan_div ~ MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall+(1|Block))
+
+gb.shan_div.rfclimfire <- glmmTMB(data = gbdata, 
+                        shan_div ~ MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall + Fire+(1|Block))
+
+gb.shan_div.rfclimrod <- glmmTMB(data = gbdata, 
+                        shan_div~ MST_Summer + lag.TAP + MST_Spring + lag.SP_Fall + Rodents+(1|Block))
+
+gb.shan_div.rodents <- glmmTMB(data = gbdata, 
+                        shan_div ~ Rodent.Abundance+(1|Block))
+
+gb.shan_div.rodentsfire <- glmmTMB(data = gbdata, 
+                        shan_div ~Rodent.Abundance +Fire +(1|Block) )
+
+gb.shan_div.ints <- glmmTMB(data = gbdata, 
+                        shan_div ~ MST_Summer * Fire + lag.TAP * Fire + MST_Spring * Fire + lag.SP_Fall *Fire +(1|Block))
+
+gb.shan_div.intsall <- glmmTMB(data = gbdata, 
+                        shan_div ~ MST_Summer * Fire + lag.TAP * Fire + MST_Spring * Fire + lag.SP_Fall *Fire + Rodent.Abundance*Fire+(1|Block))
+
+
+gb.shan_div.sel <- model.sel(gb.shan_div.clim, gb.shan_div.exp, gb.shan_div.global, gb.shan_div.inv, gb.shan_div.invclim, gb.shan_div.null, 
+                         gb.shan_div.rfbest, gb.shan_div.rfclimfire, gb.shan_div.rfclimrod, gb.shan_div.invlagclim, gb.shan_div.rodents,
+                         gb.shan_div.rodentsfire, gb.shan_div.climrfbest, gb.shan_div.ints, gb.shan_div.intsall)
+gb.shan_div.sel
+r2(gb.shan_div.rfclimfire)
+
+
+
+```
+
+```{r}
+
+summary(gb.shan_div.rfclimfire)
+
+
+figgha <- ggplot(data = gbplotdata, aes(x= MST_Summer, y = shan_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "MST Summer (ºC)", y = "Shannon's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figghb<- ggplot(data = gbplotdata, aes(x= lag.TAP, y = shan_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag TAP (mm)", y = "Shannon's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figghc<- ggplot(data = gbplotdata, aes(x= MST_Spring, y = shan_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "MST Spring (ºC)", y = "Shannon's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figghd<- ggplot(data = gbplotdata, aes(x= lag.SP_Fall, y = shan_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Fall PPT (mm)", y = "Shannon's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figghe<- ggplot(data = gbplotdata, aes(x= Fire, y = shan_div, fill  = Fire))+
+  geom_boxplot()+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  labs(x = "Fire", y = "Shannon's Diversity", colour = "Fire", fill = "Fire") +
+    scale_fill_manual(values = c("turquoise2", "firebrick2"))+
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figgie
+
+ggarrange(figgia, figgib,
+          figgic, figgid,
+          figgie,
+          ncol = 1, nrow = 4,
+          legend = "right",
+          labels = "AUTO", font.label = list(family="serif", size = 12))
+
+
+
+```
+
+Now lets do the Mojave
+
+
+Candidate list of models for Moj
+
+```{r}
+
+null <- ' 1+ar1(Block + 0 | Year)'
+
+exp <- 'Fire * Rodents + ar1(Block + 0 | Year)'
+
+inv <- 'BRRU+ SCAR  + ar1(Block + 0 | Year)'
+
+tot.clim <- 'TAP + MAT  + ar1(Block + 0 | Year)'
+
+global <- 'TAP + MAT + BRRU + Fire + Rodents + SCAR  + ar1(Block + 0 | Year)'
+
+globallag <- 'lag.TAP + lag.MAT + BRRU + Fire + Rodents + SCAR  + ar1(Block + 0 | Year)'
+
+rfbest <- 'BRRU + lag.SP_Spring + lag.TAP + SCAR  + ar1(Block + 0 | Year)'
+
+invclim <- 'BRRU + SCAR + TAP + MAT  + ar1(Block + 0 | Year)'
+
+invlagclim <- 'BRRU  + SCAR + lag.TAP + lag.MAT  + ar1(Block + 0 | Year)'
+
+climrfbest <- 'lag.SP_Spring + lag.TAP + MST_Spring + lag.SP_Winter + ar1(Block + 0 | Year)'
+
+rfclimfire <- 'lag.SP_Spring + lag.TAP + MST_Spring + lag.SP_Winter + Fire + ar1(Block + 0 | Year)'
+
+rfclimrod <- 'lag.SP_Spring + lag.TAP + MST_Spring + lag.SP_Winter + Rodents + ar1(Block + 0 | Year)'
+
+rodents <- 'Rodent.Abundance + ar1(Block + 0 | Year)'
+
+rodentfire <- 'Rodent.Abundance +Fire  + ar1(Block + 0 | Year)'
+
+
+```
+
+
+
+Mojave models
+
+Richness
+
+```{r}
+
+hist(mojdata$rich) #nice normal distribution for my poisson data
+varImpPlot(moj.rf.rich)
+#lets look for temporal autocorrelation
+acf(mojdata$rich)
+
+# These models are going to be defined based on a priori hypotheses
+
+
+
+# There is no variance contributed by the random effect
+# Conditional model:
+#  Groups   Name        Std.Dev.   Corr       
+#  Block    (Intercept) 0.00047355            
+#  Year     Block1      1.26614167 0.493 (ar1)
+#  Residual             0.91760934  
+
+### Level 1 ####
+
+# Null model to compare to as a baseline 
+moj.rich.null <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", null))) # Adding AR(1) correlation structure
+summary(moj.rich.null)
+
+# Experimental model that considers the treatments we imposed
+moj.rich.exp <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", exp))) # Adding AR(1) correlation structure
+summary(moj.rich.exp)
+
+# Invasive species model looking at cheatgrass effects
+moj.rich.inv <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", inv)))
+
+
+# Climate model
+moj.rich.clim <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", tot.clim)))
+
+
+# Global
+moj.rich.global <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", global)))
+
+moj.rich.globallag <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", globallag)))
+
+
+moj.rich.invclim <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", invclim)))
+
+moj.rich.invlagclim <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", invlagclim)))
+
+moj.rich.rodents <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", rodents)))
+
+moj.rich.rodentsfire <- glmmTMB(data = mojdata, 
+                        formula = as.formula(paste("rich ~", rodentfire)))
+
+#### Level 2 ####
+
+# RF Best
+moj.rich.rfbest <- glmmTMB(data = mojdata, 
+                                rich ~ lag.TAP + BRRU + SCAR + lag.SP_Spring+
+                               ar1(Block + 0 | Year))
+
+
+moj.rich.climrfbest <- glmmTMB(data = mojdata, 
+                              rich ~lag.TAP + lag.SP_Spring + 
+                                 ar1(Block + 0 | Year))
+
+moj.rich.rfclimfire <- glmmTMB(data = mojdata, 
+                        rich ~lag.TAP * Fire + lag.SP_Spring * Fire + 
+                         ar1(Block + 0 | Year))
+
+moj.rich.rfclimrod <- glmmTMB(data = mojdata, 
+                       rich ~lag.TAP *Rodent.Abundance +
+                          ar1(Block + 0 | Year))
+
+
+#### Level 3 #####
+
+
+moj.rich.intsf <- glmmTMB(data = mojdata, 
+                        rich ~ lag.TAP * Fire + lag.MAT * Fire + BRRU * Fire + SCAR *Fire 
+                        + ar1(Block + 0 | Year))
+
+moj.rich.intsr <- glmmTMB(data = mojdata, 
+                        rich ~  lag.TAP * Rodents + lag.MAT * Rodents + BRRU * Rodents + SCAR * Rodents +
+                           ar1(Block + 0 | Year))
+
+
+moj.rich.sel <- model.sel(moj.rich.clim, moj.rich.exp, moj.rich.global, moj.rich.globallag, moj.rich.inv, moj.rich.invclim, moj.rich.null, 
+                         moj.rich.rfbest, moj.rich.rfclimfire, moj.rich.rfclimrod, moj.rich.invlagclim, moj.rich.rodents,
+                         moj.rich.rodentsfire, moj.rich.climrfbest, moj.rich.intsf, moj.rich.intsr)
+moj.rich.sel
+
+moj.rich.sel <- as.data.frame(moj.rich.sel)
+
+write.csv(moj.rich.sel, "Output files/Moj_Rich_Sel.csv")
+
+r2(moj.rich.intsf)
+VarCorr(moj.rich.intsf)
+summary(moj.rich.intsf)
+moj.rich.top <- summary(moj.rich.intsf)
+data.frame(moj.rich.top$coefficients$cond)
+
+write.csv(data.frame(moj.rich.top$coefficients$cond), "Output files/Moj_Rich_Top.csv")
+
+
+
+```
+
+
+
+```{r}
+
+figmra<- ggplot(data = mojplotdata, aes(x= BRRU, y = rich, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "B. rubens Density", y = "Richness") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"), labels = c("Unburned", "Burned"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = c(1500,1500), label.y = c(2,4)) +
+  theme_bw()+
+  common_theme
+
+
+figmrb<- ggplot(data = mojplotdata, aes(x= SCAR, y = rich, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "S. arabicus Density", y = "Richness") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"), labels = c("Unburned", "Burned"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = c(2500, 2500), label.y = c(3.5,5)) +
+  theme_bw()+
+  common_theme
+
+figmrc<- ggplot(data = mojplotdata, aes(x= lag.MAT, y = rich, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Mean Annual Temperature (ºC)", y = "Richness") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"), labels = c("Unburned", "Burned"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = 16.5, label.y = c(3,4)) +
+  theme_bw()+ 
+  common_theme
+
+figmrd<- ggplot(data = mojplotdata, aes(x= lag.TAP, y = rich, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Total Annual Precipitation (mm)", y = "Richness") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"), labels = c("Unburned", "Burned"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = c(300,300), label.y = c(3,4)) +
+  theme_bw()+
+  common_theme
+
+ggarrange(figmra, figmrb,
+          figmrc, figmrd,
+          ncol = 1, nrow = 4,
+          legend = "right",
+          common.legend = TRUE,
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv",
+          heights = 2, widths = 2)
+
+ggarrange(figmra, figmrb,
+           figmrd, figmrc,
+          ncol = 2, nrow = 2,
+          legend = "right",
+          common.legend = TRUE,
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv",
+          heights = 2, widths = 2)
+
+```
+
+
+```{r}
+
+# I tested this first with the random effect of block included which resulted in Singularity and block contributed 0 variance
+# THese are those results from the top model that included (1|Block):
+# Conditional model:
+#  Groups   Name        Std.Dev.    Corr       
+#  Block    (Intercept) 0.000039948            
+#  Year     Block1      0.643989229 0.628 (ar1)
+#  Residual             0.377918599  
+
+# So now I am removing the random effect but keeping the autoregressive component
+
+hist(mojdata$simp_div) #nice normal distribution for my poisson data
+summary(mojdata$simp_div)
+varImpPlot(moj.rf.simp)
+#lets look for temporal autocorrelation
+acf(mojdata$simp_div)
+
+# These models are going to be defined based on a priori hypotheses
+
+# Null model to compare to as a baseline 
+moj.simp_div.null <- glmmTMB(data = mojdata,
+                            simp_div ~ 1 + ar1(Block + 0 | Year),
+                        family = gaussian()) # Adding AR(1) correlation structure
+
+
+# Experimental model that considers the treatments we imposed
+moj.simp_div.exp <- glmmTMB(data = mojdata, 
+                        simp_div ~Fire * Rodents +  ar1(Block + 0 | Year)) # Adding AR(1) correlation structure
+
+
+# Invasive species model looking at cheatgrass effects
+moj.simp_div.inv <- glmmTMB(data = mojdata, 
+                        simp_div ~ BRRU  + SCAR +  ar1(Block + 0 | Year))
+
+
+# Climate model
+moj.simp_div.clim <- glmmTMB(data = mojdata, 
+                        simp_div ~ TAP + MAT + ar1(Block + 0 | Year))
+
+
+# Global
+moj.simp_div.global <- glmmTMB(data = mojdata, 
+                        simp_div ~ TAP + MAT + BRRU + Fire + Rodents + SCAR +  ar1(Block + 0 | Year))
+
+moj.simp_div.globallag <- glmmTMB(data = mojdata, 
+                        simp_div ~ lag.TAP + lag.MAT + BRRU + Fire + Rodents + SCAR +  ar1(Block + 0 | Year))
+
+moj.simp_div.invclim <- glmmTMB(data = mojdata, 
+                        simp_div ~ BRRU  + SCAR + TAP + MAT + ar1(Block + 0 | Year))
+
+moj.simp_div.invlagclim <- glmmTMB(data = mojdata, 
+                        simp_div ~ BRRU + SCAR + lag.TAP + lag.MAT + ar1(Block + 0 | Year))
+
+moj.simp_div.rodents <- glmmTMB(data = mojdata, 
+                        simp_div ~ Rodent.Abundance + ar1(Block + 0 | Year))
+
+moj.simp_div.rodentsfire <- glmmTMB(data = mojdata, 
+                        simp_div ~Rodent.Abundance +Fire  + ar1(Block + 0 | Year))
+
+### Level 2 ##### 
+
+# RF Best
+moj.simp_div.rfbest <- glmmTMB(data = mojdata, 
+                        simp_div ~ BRRU + lag.MST_Spring + MST_Winter + SCAR+ ar1(Block + 0 | Year))
+
+
+moj.simp_div.climrfbest <- glmmTMB(data = mojdata, 
+                        simp_div ~ MST_Winter + lag.MST_Spring + ar1(Block + 0 | Year))
+
+moj.simp_div.rfclimfire <- glmmTMB(data = mojdata, 
+                        simp_div ~ MST_Winter*Fire + lag.MST_Spring*Fire + ar1(Block + 0 | Year))
+
+moj.simp_div.rfclimrod <- glmmTMB(data = mojdata, 
+                        simp_div~ MST_Winter*Rodents + lag.MST_Spring* Rodents+ ar1(Block + 0 | Year))
+
+
+
+moj.simp_div.intsf <- glmmTMB(data = mojdata, 
+                        simp_div ~ TAP * Fire + MAT * Fire + BRRU  * Fire + Rodents * Fire + SCAR * Fire + 
+                         ar1(Block + 0 | Year))
+
+moj.simp_div.intsr <- glmmTMB(data = mojdata, 
+                        simp_div ~ TAP * Rodents + MAT * Rodents + BRRU * Rodents +
+                          Fire * Rodents + SCAR * Rodents + ar1(Block + 0 | Year))
+
+
+moj.simp_div.sel <- model.sel(moj.simp_div.clim, moj.simp_div.exp, moj.simp_div.global, moj.simp_div.inv, moj.simp_div.invclim, moj.simp_div.null, moj.simp_div.rfbest, moj.simp_div.rfclimfire, moj.simp_div.rfclimrod, moj.simp_div.invlagclim, moj.simp_div.rodents,
+                         moj.simp_div.rodentsfire, moj.simp_div.climrfbest, moj.simp_div.intsr, moj.simp_div.intsf)
+
+moj.simp_div.sel
+
+summary(moj.simp_div.global)
+r2(moj.simp_div.global)
+
+
+performance::check_singularity(moj.simp_div.global)
+
+VarCorr(moj.simp_div.global)
+
+moj.simp_div.sel <- as.data.frame(moj.simp_div.sel)
+
+write.csv(moj.simp_div.sel, "Output files/Moj_Simp_Sel.csv")
+
+moj.simp.top <- summary(moj.simp_div.global)
+
+write.csv(data.frame(moj.simp.top$coefficients$cond), "Output files/Moj_Simp_Top.csv")
+
+
+```
+
+Mojave Simpsons Diversity
+
+```{r}
+
+moj.simp_div.sel
+summary(moj.simp_div.global)
+
+figmia <- ggplot(data = mojplotdata, aes(x= BRRU, y = simp_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  geom_smooth(method = "lm",alpha = 0.2) +  # Regression line with CI
+  labs(x = "BRRU Density", y = "Simpson's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+
+figmib <- ggplot(data = mojplotdata, aes(x= SCAR, y = simp_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "SCAR Density", y = "Simpson's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figmic<- ggplot(data = mojplotdata, aes(x= MAT, y = simp_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "MAT (ºC)", y = "Simpson's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figmid<- ggplot(data = mojplotdata, aes(x= TAP, y = simp_div))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "TAP (mm)", y = "Simpson's Diversity") +
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+figmie <- ggplot(data = mojplotdata, aes(x= Fire, y = simp_div, fill  = Fire))+
+  geom_boxplot()+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  labs(x = "Fire", y = "Simpson's Diversity", colour = "Fire", fill = "Fire") +
+    scale_fill_manual(values = c("turquoise2", "firebrick2"))+
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme+
+  theme(legend.position = c(0.5, 0.7),  # Adjust position (x, y)
+        legend.background = element_rect(fill = "white", color = "black"),  # Background box
+        legend.key = element_rect(fill = "white"))+ 
+  theme(legend.background = element_rect(color = NA))
+
+figmif <- ggplot(data = mojplotdata, aes(x= Rodents, y = simp_div, fill  = Rodents))+
+  geom_boxplot()+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  labs(x = "Rodents", y = "Simpson's Diversity", colour = "Rodents", fill = "Rodents") +
+    scale_fill_manual(values = c("yellow", "purple" ), labels= c("Present", "Excluded"))+
+  #stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme+
+  theme(legend.position = c(0.5, 0.18),  # Adjust position (x, y)
+        legend.background = element_rect(fill = "white", color = "black"),  # Background box
+        legend.key = element_rect(fill = "white"))+ 
+  theme(legend.background = element_rect(color = NA))
+
+ggarrange(figmia, figmib,
+          figmic, figmid,
+          figmie, figmif,
+          ncol = 2, nrow = 3,
+          labels = "AUTO", font.label = list(family="serif", size = 12))
+
+```
+
+
+
+Shannons Diversity
+
+
+```{r}
+
+hist(mojdata$shan_div) #nice normal distribution for my poisson data
+summary(mojdata$shan_div)
+#lets look for temporal autocorrelation
+acf(mojdata$shan_div)
+varImpPlot(moj.rf.shan)
+# These models are going to be defined based on a priori hypotheses
+
+# Null model to compare to as a baseline 
+moj.shan_div.null <- glmmTMB(data = mojdata,
+                            shan_div ~ 1 + (1|Block)+ ar1(Block + 0 | Year),
+                        family = gaussian()) # Adding AR(1) correlation structure
+summary(moj.shan_div.null)
+
+# Experimental model that considers the treatments we imposed
+moj.shan_div.exp <- glmmTMB(data = mojdata, 
+                        shan_div ~Fire * Rodents + (1|Block)+ ar1(Block + 0 | Year)) # Adding AR(1) correlation structure
+summary(moj.shan_div.exp)
+
+# Invasive species model looking at cheatgrass effects
+moj.shan_div.inv <- glmmTMB(data = mojdata, 
+                        shan_div ~ BRRU +  SCAR + (1|Block)+ ar1(Block + 0 | Year))
+summary(moj.shan_div.inv)
+
+# Climate model
+moj.shan_div.clim <- glmmTMB(data = mojdata, 
+                        shan_div ~ TAP + MAT +(1|Block)+ ar1(Block + 0 | Year))
+summary(moj.shan_div.clim)
+
+# Global
+moj.shan_div.global <- glmmTMB(data = mojdata, 
+                        shan_div ~ TAP + MAT + BRRU + Fire + Rodents + SCAR + (1|Block)+ ar1(Block + 0 | Year))
+
+# Global
+moj.shan_div.globallag <- glmmTMB(data = mojdata, 
+                        shan_div ~ lag.TAP + lag.MAT + BRRU + Fire + Rodents + SCAR + (1|Block)+ ar1(Block + 0 | Year))
+
+moj.shan_div.invclim <- glmmTMB(data = mojdata, 
+                        shan_div ~ BRRU + SCAR + TAP + MAT +(1|Block)+ ar1(Block + 0 | Year))
+
+moj.shan_div.invlagclim <- glmmTMB(data = mojdata, 
+                        shan_div ~ BRRU + SCAR + lag.TAP + lag.MAT +(1|Block)+ ar1(Block + 0 | Year))
+
+moj.shan_div.rodents <- glmmTMB(data = mojdata, 
+                        shan_div ~ Rodent.Abundance+(1|Block)+ ar1(Block + 0 | Year))
+
+moj.shan_div.rodentsfire <- glmmTMB(data = mojdata, 
+                        shan_div ~Rodent.Abundance +Fire +(1|Block) + ar1(Block + 0 | Year))
+
+### Level 2 ####
+moj.shan_div.rfbest <- glmmTMB(data = mojdata, 
+                        shan_div ~ BRRU + lag.SP_Winter + MST_Winter + SCAR+(1|Block)+ ar1(Block + 0 | Year))
+
+
+
+moj.shan_div.climrfbest <- glmmTMB(data = mojdata, 
+                        shan_div ~ lag.SP_Winter + MST_Winter + (1|Block)+ ar1(Block + 0 | Year))
+
+moj.shan_div.rfclimfire <- glmmTMB(data = mojdata, 
+                        shan_div ~ lag.SP_Winter * Fire + MST_Winter * Fire + (1|Block)+ ar1(Block + 0 | Year))
+
+moj.shan_div.rfclimrod <- glmmTMB(data = mojdata, 
+                        shan_div~ lag.SP_Winter * Rodents + MST_Winter * Rodents + (1|Block)+ ar1(Block + 0 | Year))
+
+
+
+moj.shan_div.intsf <- glmmTMB(data = mojdata, 
+                        shan_div ~ lag.TAP * Fire + lag.MAT * Fire + BRRU  * Fire  + SCAR * Fire +
+                        (1|Block)+ ar1(Block + 0 | Year))
+
+moj.shan_div.intsr <- glmmTMB(data = mojdata, 
+                        shan_div ~ lag.TAP * Rodents + lag.MAT * Rodents + BRRU * Rodents +
+                         SCAR * Rodents +(1|Block)+ ar1(Block + 0 | Year))
+
+
+moj.shan_div.sel <- model.sel(moj.shan_div.clim, moj.shan_div.exp, moj.shan_div.global,moj.shan_div.globallag, moj.shan_div.inv, moj.shan_div.invclim, moj.shan_div.null, moj.shan_div.rfbest, moj.shan_div.rfclimfire, moj.shan_div.rfclimrod, moj.shan_div.invlagclim, moj.shan_div.rodents,
+                         moj.shan_div.rodentsfire, moj.shan_div.climrfbest, moj.shan_div.intsf, moj.shan_div.intsr)
+
+moj.shan_div.sel
+
+summary(moj.shan_div.intsf)
+
+r2(moj.shan_div.intsf)
+
+performance::check_singularity(moj.shan_div.intsf) # Not singular
+
+
+moj.shan_div.sel <- as.data.frame(moj.shan_div.sel)
+
+write.csv(moj.shan_div.sel, "Output files/Moj_Shan_Sel.csv")
+
+moj.shan.top <- summary(moj.shan_div.intsf)
+
+write.csv(data.frame(moj.shan.top$coefficients$cond), "Output files/Moj_Shan_Top.csv")
+
+```
+
+
+I want to graph the responses of the variables from the top models but not using the predictions
+
+
+
+```{r}
+
+
+figmha<- ggplot(data = mojplotdata, aes(x= BRRU, y = shan_div, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "B. rubens Density", y = "Shannon's Diveristy") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"), labels = c("Unburned", "Burned"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = c(1500,1500), label.y = c(0.3,0.5)) +
+  theme_bw()+
+  common_theme
+
+
+figmhb<- ggplot(data = mojplotdata, aes(x= SCAR, y = shan_div, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  #stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "S. arabicus Density", y = "Shannon's Diversity") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"), labels = c("Unburned", "Burned"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = c(2500, 2500), label.y = c(1,1.3)) +
+  theme_bw()+
+  common_theme
+
+figmhc<- ggplot(data = mojplotdata, aes(x= lag.MAT, y = shan_div, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Mean Annual Temperature (ºC)", y = "Shannon's Diversity") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"), labels = c("Unburned", "Burned"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = 16.5, label.y = c(0.3,0.5)) +
+  theme_bw()+ 
+  common_theme
+
+figmhd<- ggplot(data = mojplotdata, aes(x= lag.TAP, y = shan_div, colour  = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Total Annual Precipitation (mm)", y = "Shannon's Diversity") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"), labels = c("Unburned", "Burned"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = c(300,300), label.y = c(0.3,0.5)) +
+  theme_bw()+
+  common_theme
+
+ggarrange(figmha, figmhb,
+          figmhc, figmhd,
+          ncol = 1, nrow = 4,
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv",
+          heights = 2, widths = 2,
+          common.legend = TRUE,
+          legend = "right")
+
+ggarrange(figmha, figmhb,
+           figmhd, figmhc,
+          ncol = 2, nrow = 2,
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv",
+          heights = 2, widths = 2,
+          common.legend = TRUE,
+          legend = "right")
+
+figmhd
+
+```
+
+Cover
+
+```{r}
+
+mccplotdata <- mcc
+# I need to standardize mcc
+mcc[6:63] <- scale(mcc[6:63])
+mcc[67:90] <- scale(mcc[67:90])
+
+
+
+# I am removing the autoregressive component because of the small variance associated with year leading to model convergence
+# Here are the results that say that
+# VarCorr(moj.Total.Cover.inv)
+# 
+# Conditional model:
+#  Groups   Name        Std.Dev.   Corr       
+#  Block    (Intercept)  2.0507467            
+#  Year     Block1       0.0056366 0.986 (ar1)
+#  Residual             13.4689436  
+
+
+str(mcc)
+str(mojdata)
+hist(mcc$Total.Cover) #nice normal distribution for my poisson data
+summary(mcc$Total.Cover)
+
+varImpPlot(moj.rf.cover)
+
+#lets look for temporal autocorrelation
+acf(mcc$Total.Cover)
+mcc$Block <- as.factor(mcc$Block)
+# These models are going to be defined based on a priori hypotheses
+
+# Null model to compare to as a baseline 
+moj.Total.Cover.null <- glmmTMB(data = mcc,
+                            Total.Cover ~ 1 + (1|Block),
+                        family = gaussian()) # Adding AR(1) correlation structure
+summary(moj.Total.Cover.null)
+
+# Experimental model that considers the treatments we imposed
+moj.Total.Cover.exp <- glmmTMB(data = mcc, 
+                        Total.Cover ~Fire * Rodents + (1|Block)) # Adding AR(1) correlation structure
+summary(moj.Total.Cover.exp)
+
+# Invasive species model looking at cheatgrass effects
+moj.Total.Cover.inv <- glmmTMB(data = mcc, 
+                        Total.Cover ~ BRRU +  SCAR + (1|Block))
+summary(moj.Total.Cover.inv)
+
+# Climate model
+moj.Total.Cover.clim <- glmmTMB(data = mcc, 
+                        Total.Cover ~ TAP + MAT +(1|Block))
+summary(moj.Total.Cover.clim)
+
+# Global
+moj.Total.Cover.global <- glmmTMB(data = mcc, 
+                        Total.Cover ~ TAP + MAT + BRRU + Fire + Rodents + SCAR + (1|Block))
+
+moj.Total.Cover.globallag <- glmmTMB(data = mcc, 
+                        Total.Cover ~ lag.TAP + lag.MAT + BRRU + Fire + Rodents + SCAR + (1|Block))
+
+
+moj.Total.Cover.invclim <- glmmTMB(data = mcc, 
+                        Total.Cover ~ BRRU + SCAR + TAP + MAT +(1|Block))
+
+moj.Total.Cover.invlagclim <- glmmTMB(data = mcc, 
+                        Total.Cover ~ BRRU + SCAR + lag.TAP + lag.MAT +(1|Block))
+
+moj.Total.Cover.rodents <- glmmTMB(data = mcc, 
+                        Total.Cover ~ Rodent.Abundance+(1|Block))
+
+moj.Total.Cover.rodentsfire <- glmmTMB(data = mcc, 
+                        Total.Cover ~Rodent.Abundance +Fire +(1|Block) )
+
+
+# Level 2
+
+moj.Total.Cover.rfbest <- glmmTMB(data = mcc, 
+                        Total.Cover ~ lag.MAT + lag.MST_Winter + Rodent.Abundance + Fire + (1|Block))
+
+
+moj.Total.Cover.climrfbest <- glmmTMB(data = mcc, 
+                        Total.Cover ~  lag.MAT + lag.MST_Winter + (1|Block))
+
+moj.Total.Cover.rfclimfire <- glmmTMB(data = mcc, 
+                        Total.Cover ~ lag.MAT * Fire + lag.MST_Winter * Fire +(1|Block))
+
+moj.Total.Cover.rfclimrod <- glmmTMB(data = mcc, 
+                        Total.Cover~ lag.MAT* Rodents + lag.MST_Winter* Rodents +(1|Block))
+
+
+
+moj.Total.Cover.intsf <- glmmTMB(data = mcc, 
+                        Total.Cover ~ BRRU * Fire + SCAR * Fire + lag.TAP * Fire + lag.MAT * Fire
+                        +(1|Block))
+
+moj.Total.Cover.intsr <- glmmTMB(data = mcc, 
+                        Total.Cover ~ BRRU * Rodents + SCAR * Rodents + lag.TAP * Rodents + lag.MAT * Rodents +(1|Block))
+
+
+moj.Total.Cover.sel <- model.sel(moj.Total.Cover.clim, moj.Total.Cover.exp, moj.Total.Cover.global,  moj.Total.Cover.inv, moj.Total.Cover.invclim, moj.Total.Cover.null, 
+                         moj.Total.Cover.rfbest, moj.Total.Cover.rfclimfire, moj.Total.Cover.rfclimrod, moj.Total.Cover.invlagclim, moj.Total.Cover.rodents,
+                         moj.Total.Cover.rodentsfire, moj.Total.Cover.climrfbest, moj.Total.Cover.intsf, moj.Total.Cover.intsr)
+moj.Total.Cover.sel
+
+summary(moj.Total.Cover.intsf)
+VarCorr(moj.Total.Cover.intsf)
+r2(moj.Total.Cover.intsf)
+performance::check_singularity(moj.Total.Cover.intsf)
+
+performance::check_singularity(moj.Total.Cover.intsf) # Not singular
+
+moj.Total.Cover.sel <- as.data.frame(moj.Total.Cover.sel)
+
+write.csv(moj.Total.Cover.sel, "Output files/Moj_Cover_Sel.csv")
+
+moj.cover.top <- summary(moj.Total.Cover.intsf)
+
+write.csv(data.frame(moj.cover.top$coefficients$cond), "Output files/Moj_Cover_Top.csv")
+
+```
+
+```{r}
+
+summary(moj.Total.Cover.intsf)
+
+figmca<- ggplot(data = mccplotdata, aes(x= BRRU, y = Total.Cover, color = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "B. rubens Density", y = "Plant Cover (%)") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = 1500, label.y = c(40,50)) +
+  theme_bw()+
+  common_theme
+
+figmcb<- ggplot(data = mccplotdata, aes(x= SCAR, y = Total.Cover, color = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "S. arabicus Density", y = "Plant Cover (%)") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = 2500, label.y = c(40,50)) +
+  theme_bw()+
+  common_theme
+
+figmcc<- ggplot(data = mccplotdata, aes(x= lag.TAP, y = Total.Cover, color = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Total Annual Precipitation (mm)", y = "Plant Cover (%)") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = 100, label.y = c(75,85)) +
+  theme_bw()+ 
+  common_theme
+
+figmcd<- ggplot(data = mccplotdata, aes(x= lag.MAT, y = Total.Cover, color = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "lag Mean Annual Temperature (ºC)", y = "Plant Cover (%)") +
+  scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = 16.25, label.y = c(45,55)) +
+  theme_bw()+
+  common_theme
+
+ggarrange(figmca, figmcb,
+          figmcc, figmcd,
+          ncol = 1, nrow = 4,
+          legend = "right",
+          common.legend = TRUE,
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv",
+          heights = 2, widths = 2)
+
+ggarrange(figmca, figmcb,
+          figmcc, figmcd,
+          ncol = 2, nrow = 2,
+          legend = "right",
+          common.legend = TRUE,
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          align = "hv",
+          heights = 2, widths = 2)
+
+figmcb
+
+```
+
+
+Total Density
+
+
+
+```{r}
+
+varImpPlot(moj.rf.density)
+
+#lets look for temporal autocorrelation
+acf(mojdata$totaldensity)
+mojdata$Block <- as.factor(mojdata$Block)
+# These models are going to be defined based on a priori hypotheses
+
+# Null model to compare to as a baseline 
+moj.totaldensity.null <- glmmTMB(data = mojdata,
+                            totaldensity ~ 1 + ar1(Block + 0 | Year),
+                        family = gaussian()) # Adding AR(1) correlation structure
+summary(moj.totaldensity.null)
+
+# Experimental model that considers the treatments we imposed
+moj.totaldensity.exp <- glmmTMB(data = mojdata, 
+                        totaldensity ~Fire * Rodents + ar1(Block + 0 | Year)) # Adding AR(1) correlation structure
+summary(moj.totaldensity.exp)
+
+
+# Climate model
+moj.totaldensity.clim <- glmmTMB(data = mojdata, 
+                        totaldensity ~ TAP + MAT +ar1(Block + 0 | Year))
+summary(moj.totaldensity.clim)
+
+# Global
+moj.totaldensity.global <- glmmTMB(data = mojdata, 
+                        totaldensity ~ TAP + MAT +  Fire + Rodents  + ar1(Block + 0 | Year))
+
+moj.totaldensity.globallag <- glmmTMB(data = mojdata, 
+                        totaldensity ~ lag.TAP + lag.MAT + Fire + Rodents  + ar1(Block + 0 | Year))
+
+
+moj.totaldensity.rodents <- glmmTMB(data = mojdata, 
+                        totaldensity ~ Rodent.Abundance + ar1(Block + 0 | Year))
+
+moj.totaldensity.rodentsfire <- glmmTMB(data = mojdata, 
+                        totaldensity ~Rodent.Abundance +Fire + ar1(Block + 0 | Year) )
+
+
+# Level 2
+
+moj.totaldensity.rfbest <- glmmTMB(data = mojdata, 
+                        totaldensity ~ Fire + SP_Fall +MST_Summer + MST_Winter+ ar1(Block + 0 | Year))
+
+
+moj.totaldensity.climrfbest <- glmmTMB(data = mojdata, 
+                        totaldensity ~  SP_Fall+ MST_Winter + ar1(Block + 0 | Year))
+
+moj.totaldensity.rfclimfire <- glmmTMB(data = mojdata, 
+                        totaldensity ~ SP_Fall * Fire + MST_Winter * Fire + ar1(Block + 0 | Year))
+
+moj.totaldensity.rfclimrod <- glmmTMB(data = mojdata, 
+                        totaldensity~ SP_Fall * Rodents + SP_Fall* Rodents + ar1(Block + 0 | Year))
+
+
+
+moj.totaldensity.intsf <- glmmTMB(data = mojdata, 
+                        totaldensity ~ BRRU * Fire + SCAR * Fire + lag.TAP * Fire + lag.MAT * Fire
+                        +(1|Block))
+
+moj.totaldensity.intsr <- glmmTMB(data = mojdata, 
+                        totaldensity ~ BRRU * Rodents + SCAR * Rodents + lag.TAP * Rodents + lag.MAT * Rodents +(1|Block))
+
+
+moj.totaldensity.sel <- model.sel(moj.totaldensity.clim, moj.totaldensity.exp, moj.totaldensity.global, moj.totaldensity.globallag,   
+                      moj.totaldensity.null, moj.totaldensity.rfbest, moj.totaldensity.rfclimfire, moj.totaldensity.rfclimrod, moj.totaldensity.rodents,
+                         moj.totaldensity.rodentsfire, moj.totaldensity.climrfbest)
+
+moj.totaldensity.sel
+
+summary(moj.totaldensity.rfclimfire)
+VarCorr(moj.totaldensity.rfclimfire)
+r2(moj.totaldensity.rfclimfire)
+performance::check_singularity(moj.totaldensity.rfclimfire)
+
+performance::check_singularity(moj.totaldensity.rfclimfire) # Not singular
+
+moj.totaldensity.sel <- as.data.frame(moj.totaldensity.sel)
+
+write.csv(moj.totaldensity.sel, "Output files/Moj_Density_Sel.csv")
+
+moj.cover.top <- summary(moj.totaldensity.rfclimfire)
+
+write.csv(data.frame(moj.cover.top$coefficients$cond), "Output files/Moj_Density_Top.csv")
+
+```
+
+
+```{r}
+
+#summary(moj.totaldensity.rfclimfire)
+
+figmda <- ggplot(data = mojplotdata, aes(x= SP_Fall, y = totaldensity, color = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm",alpha = 0.2) +  # Regression line with CI
+  labs(x = "Fall Precipitation (mm)", y = "Total Plant Density") +
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = 60, label.y = c(2000, 2200)) +
+  scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  theme_bw()+
+  coord_cartesian(ylim = c(0,2500))+
+  common_theme
+
+
+figmdb <- ggplot(data = mojplotdata, aes(x= MST_Winter, y = totaldensity, color = Fire))+
+  stat_summary(geom = "point", fun = "mean")+
+  stat_summary(geom = "errorbar")+  # Error bars (mean ± SE)
+  geom_smooth(method = "lm", alpha = 0.2) +  # Regression line with CI
+  labs(x = "Winter Temperature (ºC)", y = "Total Plant Density") +
+  stat_regline_equation(aes(label = paste( ..rr.label..)), label.x = 6, label.y = c(2100, 2300)) +
+  scale_color_manual(values = c("turquoise2", "firebrick2"))+
+  theme_bw()+
+  coord_cartesian(ylim = c(0,2500))+
+  common_theme
+
+
+
+ggarrange(figmda, figmdb,
+          ncol = 1, nrow = 2,
+          labels = "AUTO", font.label = list(family="serif", size = 12),
+          common.legend = TRUE, 
+          legend = "right",
+          align = "hv",
+          widths = c(2,2))
+
+```
+
+
+I should test if BRTE decreases cete (Biotic resistance paper)
+
+
+
+
+```{r}
+
+mccplotdata$Total.Density<-rowSums(mccplotdata[7:64])
+
+ggplot(data = mccplotdata, aes(x= Total.Cover, y = Total.Density))+
+  stat_summary(geom = "point", fun = "mean")+
+  geom_smooth(method = "loess", alpha = 0.2) +  # Regression line with CI
+  stat_regline_equation(aes(label = paste(after_stat(eq.label), ..rr.label.., sep = "~~~"))) +
+  theme_bw()+
+  common_theme
+
+```
+
+
+
+
+```{r}
+#Red brome cover
+mean(mccplotdata$BRRU)
+mean(gbcc$BRTE.cover)
+
+brte.plot
+moj.brru.plot
+```
+
+
+I want to look at the interactive effects of fire and rodents with climate
+
+#Richness
+
+```{r}
+
+library(lmerTest)
+acf(mojplotdata$rich)
+rich.fp <- glmmTMB(data = mojplotdata, rich ~ Fire * lag.TAP +(1|Block) + ar1(Block + 0 | Year))
+rich.ft <- glmmTMB(data = mojplotdata, rich ~ Fire * lag.MAT + (1|Block) + ar1(Block + 0 | Year))
+
+rich.rp <- glmmTMB(data = mojplotdata, rich ~ Rodents * lag.TAP + (1|Block) + ar1(Block + 0 | Year))
+rich.rt <- glmmTMB(data = mojplotdata, rich ~ Rodents * lag.MAT + (1|Block) + ar1(Block + 0 | Year))
+
+summary(rich.ft)
+
+```
+# Density
+
+```{r}
+
+acf(mojplotdata$totaldensity)
+hist(log(mojplotdata$totaldensity))
+VarCorr(dens.fp)  
+dens.fp <- glmmTMB(data = mojdata, totaldensity ~ Fire * lag.TAP  + ar1(Block + 0 | Year))
+dens.ft <- glmmTMB(data = mojdata, totaldensity ~ Fire * lag.MAT  + ar1(Block + 0 | Year))
+
+dens.rp <- glmmTMB(data = mojdata, totaldensity ~ Rodents * lag.TAP + ar1(Block + 0 | Year))
+dens.rt <- glmmTMB(data = mojdata, totaldensity ~ Rodents * lag.MAT + ar1(Block + 0 | Year))
+
+summary(dens.r)
+
+```
+
+# Shannons Diversity
+
+```{r}
+
+acf(mojdata$shan_div)
+hist(mojdata$shan_div)
+VarCorr(shan.fp)  
+shan.fp <- glmmTMB(data = mojdata, shan_div ~ Fire * lag.TAP  + ar1(Block + 0 | Year))
+shan.ft <- glmmTMB(data = mojdata, shan_div ~ Fire * lag.MAT  + ar1(Block + 0 | Year))
+
+shan.rp <- glmmTMB(data = mojdata, shan_div ~ Rodents * lag.TAP + ar1(Block + 0 | Year))
+shan.rt <- glmmTMB(data = mojdata, shan_div ~ Rodents * lag.MAT + ar1(Block + 0 | Year))
+
+summary(shan.rp)
+
+```
+
+
+# Cover
+
+```{r}
+
+acf(mcc$Total.Cover)
+hist(mcc$Total.Cover)
+VarCorr(cover.fp)  
+cover.fp <- glmmTMB(data = mcc, Total.Cover ~ Fire * lag.TAP  + ar1(Block + 0 | Year))
+cover.ft <- glmmTMB(data =  mcc, Total.Cover ~ Fire * lag.MAT  + ar1(Block + 0 | Year))
+
+cover.rp <- glmmTMB(data =  mcc, Total.Cover ~ Rodents * lag.TAP + ar1(Block + 0 | Year))
+cover.rt <- glmmTMB(data =  mcc, Total.Cover ~ Rodents * lag.MAT + ar1(Block + 0 | Year))
+
+summary(cover.ft)
+
+```
+Export models
+
+```{r}
+
+library(broom)
+library(dplyr)
+library(readr)
+
+# List of your models
+models <- list(rich.fp, rich.ft, rich.rp, rich.rt, dens.fp, dens.ft, dens.rp, dens.rt,
+               shan.fp, shan.ft, shan.rp, shan.rt, cover.fp, cover.ft, cover.rp, cover.rt)
+# Extract fixed effects
+fixed_effects <- bind_rows(lapply(seq_along(models), function(i) {
+  coef_df <- as.data.frame(summary(models[[i]])$coefficients$cond)  # Extract fixed effects
+  coef_df$Parameter <- rownames(coef_df)  # Add parameter names
+  coef_df$Model <- paste0("Model_", i)  # Add model identifier
+  coef_df
+}), .id = "Model_Index")
+
+# Rename columns for clarity
+colnames(fixed_effects) <- c("Model_Index", "Estimate", "Std_Error", "z_value", "p_value", "Parameter", "Model")
+
+
+
+model_metrics$name <- c('rich.fp', 'rich.ft', 'rich.rp', 'rich.rt', 'dens.fp', 'dens.ft', 'dens.rp', 'dens.rt',
+               'shan.fp', 'shan.ft', 'shan.rp', 'shan.rt', 'cover.fp', 'cover.ft', 'cover.rp', 'cover.rt')
+
+# Save to CSV
+write_csv(fixed_effects, "model_summaries.csv")
+
+
+
+```
+

@@ -1,0 +1,417 @@
+---
+title: "Desert Plant Models Great Basin Data Cleaning"
+author: "R Pienaar"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Libraries
+
+```{r}
+
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(vegan)
+
+```
+
+
+The goal of this project is to understand how fire, climate, and rodents affect native and introduced plants in the Great Basin and Mojave Deserts. I will use data collected from 2013 to 2025 from the study plots that includes rodent species occurence and plant density transects. Climate data will be extracted using PRISM. There is no variation between the experimental blocks in terms of climatic differences but we are looking at differences between the 2 deserts.
+
+I am going to use 1 file for both deserts but I will use seperate input data each time I run to get the seperate results for the different sites
+
+I will start by loading all of the Great Basin Files
+
+First the plant data
+
+```{r}
+
+gbplants <- read.csv("Input files/Rush_Veg_Density.csv")
+
+```
+    
+      I need to format the plant data correctly
+      
+```{r}
+
+head(gbplants)
+
+# Get rid of the individual quadrats
+gbplants <- gbplants |> select(DATE, BLOCK, PLOT, BURNED, RODENTS, TRANSECT, SPECIES, Density..m.2.)
+
+# First thing I wanna do is rename the species column cos calling it plant.species was dumb
+colnames(gbplants)
+colnames(gbplants) = c("DATE", "Block", "Plot", "Burned", "Rodents", "Transect", "Species", "Density")
+
+### How many unique species do we have
+unique(gbplants$Species) ### This is messy we have 73 species here
+gbplants$Species = as.factor(gbplants$Species)
+summary(gbplants$Species)
+
+# Lets go through em one by one,
+
+# ? We'll just remove
+gbplants = subset(gbplants, !(Species %in% c("?", "no living plants", "UK 1", "UK1", "uk2", "UKI", "UKL", "Unknown purple", "Vetch?", "Wheat grass", "rUSh gilia", "ELEL TILLERS")))
+
+# Reset the factor levels
+gbplants$Species <- as.character(gbplants$Species)
+gbplants$Species <- as.factor(gbplants$Species)
+
+# All the ELELs are the same thing
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("BELEL", "ELEL COUNT", "ELEL5", "ELELS", "ELE", "ELEL 5") ~ "ELEL",
+    TRUE ~ Species
+  ))
+
+# Now do CETE
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("CETE5", "CETI") ~ "CETE",
+    TRUE ~ Species
+  ))
+
+# Now ARTR
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("ARTR SEEDLING", "ARTRW", "ARTRW8") ~ "ARTR",
+    TRUE ~ Species
+  ))
+
+# Now BRTE
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("CBRTE") ~ "BRTE",
+    TRUE ~ Species
+  ))
+
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("LEPE2", "LEPI") ~ "LEPE",
+    TRUE ~ Species
+  ))
+
+## SIAL
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("SIAL 2", "SIAL2") ~ "SIAL",
+    TRUE ~ Species
+  ))
+
+# HAGL 
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("HAGL ") ~ "HAGL",
+    TRUE ~ Species
+  ))
+
+# RATE
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("RTE") ~ "RATE",
+    TRUE ~ Species
+  ))
+
+# POSA
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("POSA?", "POSA") ~ "POSE",
+    TRUE ~ Species
+  ))
+
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("HUMMING BIRD") ~ "CAMI",
+    TRUE ~ Species
+  ))
+
+#MEAL
+gbplants <- gbplants %>%
+  mutate(Species = case_when(
+    Species %in% c("MEAL6", "MENTZELIA") ~ "MEAL",
+    TRUE ~ Species
+  ))
+
+# Remove individual plants only found once
+gbplants <- gbplants %>%
+  group_by(Species) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+# We arent interested in the 0's right now
+
+#gbplants <- gbplants %>%
+#  filter(Density != 0)
+
+gbplants$Plot <- as.factor(gbplants$Plot)
+gbplants$Burned <- as.factor(gbplants$Burned)
+gbplants$Rodents <- as.factor(gbplants$Rodents)
+gbplants$Density <- as.numeric(gbplants$Density)
+
+
+summary(gbplants)
+
+#colnames(gbdata)
+#colnames(mojdata)
+
+```
+  
+Now I think I want to restructure the dataframe so that there is a column for every species
+
+```{r}
+
+head(gbplants)
+
+# Group by the specified columns and count occurrences
+unique_test <- gbplants %>%
+  group_by(DATE, Block, Plot, Species, Transect) %>%
+  summarise(count = n(), .groups = 'drop')
+
+# Filter the results to find any combinations that occur more than once
+duplicates <- unique_test %>%
+  filter(count > 1)
+
+
+gbplants <- gbplants %>%
+  group_by(DATE, Block, Plot, Transect, Species) %>%
+  summarise(Density = mean(Density), .groups = 'drop')
+
+# Reshape the data using pivot_wider
+gbplants <- gbplants %>%
+  pivot_wider(names_from = Species, values_from = Density, values_fill = 0)
+
+### At this point I have all my plant data in the format that I want it
+
+# Now I am going to calculate richness and diversity
+
+gbplants$rich <- rowSums(gbplants[,5:32]> 0 )
+gbplants$simp_div <- diversity(gbplants[,5:32], index = "invsimpson")
+
+summary(gbplants$simp_div)
+
+gbplants$simp_div[gbplants$simp_div==Inf] <- 1
+
+gbplants$shan_div <- diversity(gbplants[,5:32], index = "shannon")
+
+summary(gbplants)
+
+head(gbplants)
+```
+
+I am going to reformat this so that I have one row for each plot each year
+
+```{r}
+
+gbdata <- gbplants %>%
+  group_by(DATE, Block, Plot) %>%
+  summarise(across(HAGL:shan_div, mean, na.rm = TRUE), .groups = 'drop')
+
+
+# Create a complete dataset
+gbdata <- gbdata %>%
+  complete(DATE = full_seq(DATE, 1),
+           Block = 1:5,
+           Plot = factor(c('BN', 'UN', 'BS', 'US')))
+
+sum(is.na(gbdata$Plot))
+
+gbdata <- gbdata |>  mutate_all(~replace(., is.na(.), 0))
+
+summary(gbdata)
+
+```
+
+I am going to reformat this so that I have one row for each plot each year
+
+```{r}
+
+gbdata <- gbplants %>%
+  group_by(DATE, Block, Plot) %>%
+  summarise(across(ALAL:shan_div, mean, na.rm = TRUE), .groups = 'drop')
+
+
+# Create a complete dataset
+gbdata <- gbdata %>%
+  complete(DATE = full_seq(DATE, 1),
+           Block = seq(1:5),
+           Plot = factor(c('BN', 'UN', 'BS', 'US')))
+
+sum(is.na(gbdata$Plot))
+
+gbdata <- gbdata |>  mutate_all(~replace(., is.na(.), 0))
+
+summary(gbdata)
+
+```
+
+    Next up I want to get the rodent data
+  
+```{r}
+
+gbrodents <- read.csv("C:/Users/ryanp/Documents/Academia/Dissertation/Chapter2_Rodents/Rodent_analysis/Rush_Rodents_CH2_Output.csv")
+
+head(gbrodents)
+
+gbrodents$Plot <- as.factor(paste0(gbrodents$Fire, gbrodents$Rodents))
+
+
+gbrodents = gbrodents|> select(Year, BLOCK, Fire, Rodents, abundance, richness, simp_div, shan_div)
+
+gbrodents <- gbrodents|>
+  group_by(Year, BLOCK, Fire, Rodents) %>%
+  summarise(Rodent.Abundance = mean(abundance), 
+            Rodent.Richness = mean(richness), 
+            Rodent.Simp = mean(simp_div), 
+            Rodent.Shan = mean(shan_div),
+            .groups = 'drop')
+
+gbrodents$Plot <- as.factor(paste0(gbrodents$Fire, gbrodents$Rodents))
+colnames(gbrodents) = c("DATE", "Block", "Fire", "Rodents", "Rodent.Abundance", "Rodent.Richness", "Rodent.Simp", "Rodent.Shan", "Plot")
+
+head(gbrodents)
+summary(gbrodents)
+head(gbplants)
+
+gbdata = merge(gbdata, gbrodents[,c("DATE", "Block", "Plot", "Rodent.Abundance", "Rodent.Richness", "Rodent.Simp", "Rodent.Shan")], 
+                   by = c("DATE", "Block", "Plot"), all.x = TRUE)
+
+gbdata <- gbdata %>% replace(is.na(.), 0)
+
+head(gbdata)
+
+```
+
+    Now I need to load the climate data and figure out what I want to calculate from that. I have monthly data but I think I need to put it into seasons, so that the plant density is dependent on the previos summer/winter precipitation. That means I have to break it down in to seasons and years. the data collection were all in April so I think that  should end my year in April.
+    
+```{r}
+
+# Prevent scientific notation
+options(scipen = 999)
+
+gbclim <- read.csv("Input files/PRISM_data_Rush.csv")
+head(gbclim)
+
+# Convert Date column to Date format
+gbclim$Date <- as.Date(paste0(gbclim$Date, "-01"), format = "%Y-%m-%d")
+
+# Extract Year and Month
+gbclim$Year <- format(gbclim$Date, "%Y")
+gbclim$Month <- format(gbclim$Date, "%m")
+
+# Adjust the Year for water year
+gbclim$WaterYear <- as.numeric(gbclim$Year)
+gbclim$WaterYear[gbclim$Month %in% c("01", "02", "03")] <- gbclim$WaterYear[gbclim$Month %in% c("01", "02", "03")] - 1
+
+# Calculate total annual precipitation from April to March
+total_annual_precip <- aggregate(gbclim$ppt..mm., by = list(Year = gbclim$WaterYear), sum)
+mean_annual_temp <- aggregate(gbclim$tmean..degrees.C., by = list(Year = gbclim$WaterYear), mean)
+
+# Calculate seasonal precipitation
+gbclim$Season <- cut(as.numeric(gbclim$Month), 
+                 breaks = c(0, 2, 4, 8, 10, 12), # Set seasons winter Nov to Feb, spring Mar and Apr, summer May to August, fall sept to oct
+                 labels = c("Winter", "Spring", "Summer", "Fall", "Winter"))
+
+seasonal_precip <- aggregate(gbclim$ppt..mm., by = list(Year = gbclim$WaterYear, Season = gbclim$Season), sum)
+seasonal_temp <- aggregate(gbclim$tmean..degrees.C., by = list(gbclim$WaterYear, Season = gbclim$Season), mean)
+
+seasonal_temp$x = round(seasonal_temp$x, 2)
+
+colnames(total_annual_precip) <- c("Year", "TAP")
+colnames(seasonal_precip) <- c("Year", "Season", "SP")
+colnames(mean_annual_temp) <- c("Year", "MAT")
+colnames(seasonal_temp) <- c("Year","Season" ,"MST")
+
+
+# Plot precipitation
+ggplot(data = total_annual_precip, aes(x= Year, y= TAP))+
+  geom_line()
+
+ggplot(data = seasonal_precip,  aes(x= Year, y= SP, colour = Season))+
+  geom_line()
+
+# Plot temperature
+
+ggplot(data = mean_annual_temp, aes(x =Year,  y= MAT))+
+  geom_line()
+
+ggplot(data = seasonal_temp, aes(x= Year, y = MST, color = Season))+
+  geom_line()
+
+# Now we got to add these to my gbdata. The way I've set it up the total annual ppt for 2013 in gb data needs ppt from April 2012 to March 2013. This should be correct as the year comes in
+
+# I'll start by merging ppt and temp that I created
+
+annual <- merge(total_annual_precip, mean_annual_temp, by = "Year")
+seasonal <- merge(seasonal_precip, seasonal_temp, by = c("Year", "Season"))
+
+# Seasonal I'll need to create a column for each season
+
+head(seasonal)
+seasonal <- seasonal |> pivot_wider(names_from = Season, values_from = c(SP, MST), names_sep = "_")
+
+```
+
+
+    Now to merge the climate data with the rest
+    
+```{r}
+
+colnames(gbdata)[1] <- "Year" # Change name to match clim
+
+gbdata <- merge(gbdata, annual, by = "Year")
+gbdata <- merge(gbdata, seasonal, by = "Year")
+
+summary(gbdata$simp_div)
+```
+Calculate lagged effects of climate and rodents
+
+```{r}
+
+head(annual)
+head(seasonal)
+
+lag.annual <- annual
+lag.annual$Year <- annual$Year+1
+
+colnames(lag.annual) <- c("Year", "lag.TAP", "lag.MAT")
+
+gbdata <- merge(gbdata, lag.annual, by = "Year")
+
+lag.seasonal <- seasonal
+
+lag.seasonal$Year <- seasonal$Year+1
+
+colnames(lag.seasonal) <- c("Year", "lag.SP_Spring", "lag.SP_Winter",
+                            "lag.SP_Fall", "lag.SP_Summer",
+                            "lag.MST_Spring", "lag.MST_Winter",
+                            "lag.MST_Fall", "lag.MST_Summer")
+
+
+gbdata <- merge(gbdata, lag.seasonal, by = "Year")
+
+```
+
+Add Cover
+```{r}
+
+head(gbdata)
+
+```
+
+
+
+Output the final csv
+
+```{r}
+
+write.csv(gbdata, "GreatBasin_Data.csv")
+
+```
+
